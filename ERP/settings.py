@@ -44,14 +44,16 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'rest_framework_simplejwt',
     'rest_framework.authtoken',
+    'Sales.apps.SalesConfig',
+    'Store.apps.StoreConfig',
     'django_filters',
     'All_Masters',
     'Production',
     'Purchase',
-    'Store',
+    # 'Store',
     'corsheaders',
     'Settings',
-    'Sales',
+    # 'Sales',
 ]
 
 MIDDLEWARE = [

@@ -71,4 +71,6 @@ urlpatterns = router.urls + [
     path('QuotationComparison/edit/<int:pk>/', EditQuotationComparison.as_view(), name='quotationcomparison-edit'),
     path('GenrateRFQ/',generate_unique_rfq_no.as_view(),name='gererate_unique_rfq_no'),
     path('new-jobwork-item/', newjobworkitemdata.as_view(), name='new-jobwork-item'),
+    path('jobwork/RM/items/', newjobworkitemRMdata.as_view(), name='newjobworkitemdata'),
+    path("jobworkpo/FG/items/", GetPOBySupplierAPIView.as_view(), name='newjobwork-fg-data-for-outwardchallan'),
 ]

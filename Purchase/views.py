@@ -648,7 +648,6 @@ def generate_item_pdf(request, pk):
 
 
 
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import ItemDetail
@@ -1456,6 +1455,13 @@ def generate_po_pdf(request, pk):
 
     # Safely zip the item and gst details
     combined_details = zip(item_details, gst_details)
+    for item in item_details:
+        try:
+            qty = float(item.Qty or 0)
+            rate = float(item.Rate or 0)
+            item.total_amount = qty * rate
+        except ValueError:
+            item.total_amount = 0
 
     template = get_template('new_job_work_po_pdf.html')
 
@@ -2170,4 +2176,125 @@ class newjobworkitemdata(APIView):
         bom_items = BOMItem.objects.filter(item__in=items)
         serializer = BOMItemWithnewjobwork(bom_items, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK) 
+    
+
+class newjobworkitemRMdata(APIView):
+    def get(self, request):
+        query = request.query_params.get('q', '').strip().strip('"')
+        if not query:
+            return Response(
+                {'error': 'Search query "q" is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # split the query by space
+        terms = query.split()
+
+        filters = Q(BOMPartType="RM") 
+        # filters=Q(BOMPartType__in=["RM", "COM"])
+        for term in terms:
+            filters &= (Q(BomPartCode__icontains=term) | Q(BomPartDesc__icontains=term))
+
+        bom_items = BOMItem.objects.filter(filters)
+
+        if not bom_items.exists():
+            return Response(
+                {'error': 'No RM type BOM items found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = BOMItemWithnewjobwork(bom_items, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+
+
+
+
+# class newjobworkitemRMdata(APIView):
+#     def get(self, request):
+#         query = request.query_params.get('q', '').strip().strip('"')
+#         if not query:
+#             return Response(
+#                 {'error': 'Search query "q" is required'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         # Split query terms (support multi-word search)
+#         terms = query.split()
+
+#         #  Match RM or COM items only
+#         filters = Q(BOMPartType__in=["RM", "COM"])
+
+#         #  Add search filters for each word in query
+#         for term in terms:
+#             filters &= (
+#                 # Q(BomPartCode__icontains=term) |
+#                 # Q(BomPartDesc__icontains=term) |
+#                 Q(item__Part_Code__icontains=term) |
+#                 Q(item__Name_Description__icontains=term) |
+#                 Q(item__part_no__icontains=term)
+#             )
+
+#         # Fetch items efficiently
+#         bom_items = (
+#             BOMItem.objects
+#             .filter(filters)
+#             .select_related('item')   # Optimize FK lookup
+#             .order_by('item__Part_Code', 'OPNo')  # Optional: sort neatly
+#         )
+
+#         if not bom_items.exists():
+#             return Response(
+#                 {'error': 'No RM/COM BOM items found for given query'},
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
+
+#         #  Group by parent ItemTable
+#         grouped_data = {}
+#         for bom_item in bom_items:
+#             item = bom_item.item
+#             key = f"{item.Part_Code} - {item.Name_Description} - {item.part_no}"
+
+#             if key not in grouped_data:
+#                 grouped_data[key] = {
+#                     "item_id": item.id,
+#                     "bom_items": []
+#                 }
+
+#             serializer = BOMItemWithnewjobwork(bom_item)
+#             grouped_data[key]["bom_items"].append(serializer.data)
+
+#         return Response(grouped_data, status=status.HTTP_200_OK)
+
+
+
+
+
+
+from .serializers import PoSupplierFilterSerializer
+class GetPOBySupplierAPIView(APIView):
+     
+
+    def get(self, request):
+        supplier_name = request.query_params.get("supplier")
         
+        if not supplier_name:
+            return Response({"error": "supplier query parameter is required"}, status=400)
+
+        # Filter data by supplier
+        po_list = NewJobWorkPoInfo.objects.filter(Supplier__iexact=supplier_name)
+
+        result = []
+
+        for po in po_list:
+            for item in po.Item_Detail_Enter.all():  # item details loop
+                result.append({
+                    "Supplier": po.Supplier,
+                    "OutAndInPart": item.OutAndInPart,
+                    "Qty": item.Qty,
+                })
+
+        serializer = PoSupplierFilterSerializer(result, many=True)
+        return Response(serializer.data)

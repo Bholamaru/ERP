@@ -77,4 +77,17 @@ urlpatterns = [
 
     path('api/WIPstockreport/',WIPStockreport.as_view(),name='WIP-stock-report'),
          # Store/api/WIPstockreport/?q=PC-001
+    # path('api/WIPstockreport2/',WIPStockreport2.as_view(),name='WIP-stock-report'),
+    path('api/SubcornStock/',SubcornStock.as_view(),name='SubcornStock-from-in-out-challan'),
+    path("vender-stock/", VenderStock.as_view(), name="vender-stock"),
+    
+    # heat data by item and description
+    path("heat-no/",views.get_item_variants,name="get-heat-by-item-description"),
+
+    path("inward-no",generate_unique_inward_number.as_view(),name='genrate-inward-no-for-inwardchallan'),
+    path('get-bom-jobwork/', getbomnewjobwork.as_view(), name='get_bom_jobwork'),
+    path('generate-materialissue/<int:pk>/', views.generate_materialissue_challan_pdf, name='generate_materialissue_pdf'),
+    path('material-challan/delete/<int:pk>/', views.delete_material_challan, name='delete_material_challan'),
+    path('generate-challan/', GenerateUniqueChallanNumber.as_view(), name='generate-challan-materiall_issue'),
+
 ]

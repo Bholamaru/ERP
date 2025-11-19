@@ -15,3 +15,28 @@ def create_challanNumber():
                 return challan_no
 
         raise ValueError("No available challan numbers left for the current year range.")
+
+from datetime import datetime
+from .models import onwardchallan  
+
+def create_reworknumber():
+    prefix = "R/W - "
+    
+    # Fetch all challan numbers starting with "RW"
+    existing_numbers = onwardchallan.objects.filter(challan_no__startswith=prefix).values_list("challan_no", flat=True)
+    
+    # Extract numeric parts (e.g., RW01 → 1)
+    existing_ints = []
+    for num in existing_numbers:
+        try:
+            existing_ints.append(int(num.replace(prefix, "")))
+        except ValueError:
+            continue
+    
+    # Generate next available RW number
+    for counter in range(1, 1000):  # RW01 to RW999
+        rework_no = f"{prefix}{counter:02d}"  # RW01, RW02, RW03...
+        if rework_no not in existing_numbers:
+            return rework_no
+    
+    raise ValueError("No available Rework numbers left.")

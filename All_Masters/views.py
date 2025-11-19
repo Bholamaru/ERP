@@ -1964,7 +1964,8 @@ class ItemTransactionCreateAPIView2(APIView):
     def post(self, request):
         data = request.data
         try:
-            supplier = Item.objects.get(id=data['supplier_id'])
+            supplier = Item.objects.get(id=data.get('supplier') or data.get('supplier_id'))
+            # supplier = Item.objects.get(id=data['supplier_id'])
         except Item.DoesNotExist:
             return Response({"error": "Supplier not found"}, status=404)
 
@@ -2119,6 +2120,7 @@ from .serializers import RMItemTableSerializer
 class RMItemSearchView(generics.ListAPIView):
     serializer_class = RMItemTableSerializer
     filter_backends = [filters.SearchFilter]
+    # search_fields=['Part_Code']
     search_fields = ['part_no', 'Part_Code', 'Name_Description']
 
     def get_queryset(self):
@@ -2166,7 +2168,7 @@ class BOMItemSimpleSearch(APIView):
         for item in items:
             data.append({
                 "OPNo": item.OPNo,
-                "Operation": "Cutting",  # Static; replace with dynamic if needed
+                "Operation": item.Operation,  
                 "PartCode": item.PartCode
             })
 

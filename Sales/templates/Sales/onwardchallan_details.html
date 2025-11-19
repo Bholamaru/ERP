@@ -91,26 +91,20 @@
                     <td>{{ item.item_code }}</td>
                     <td>{{ item.description }}</td>
                     <td>{{ item.type }}</td>
-                    <!-- <td>{{ item.grn_detail.HeatNo }}</td> -->
-                    <td>
-                        {% for detail in item.grndetails.all %}
-                        {{ detail.HeatNo }}<br>
-                        {% empty %}
-                        -
-                        {% endfor %}
-                    </td>
+                    <td>{{ item.store }}</td>
                     <td>{{ item.qtyNo }}</td>
                     <td>{{ item.pkg }}</td>
                     <td>{{ item.wRate }}</td>
-                    <td>{{ item.wValue }}</td>
+                    <td>{{item.value }}</td>
+                    <!-- <td>{{ item.wValue }}</td> -->
                     <td>{{ item.remarks|default:"-" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         <tfoot>
             <tr>
-                <td colspan="8" class="text-right"><strong>AMOUNT</strong></td>
-                <td colspan="2">{{ challan.Estimated_value }}</td>
+                <td colspan="8" class="text-right"><strong>AMOUNT</strong></td>            
+                <td colspan="2">{{ challan.Amount }}</td>
             </tr>
         </tfoot>
     </table>

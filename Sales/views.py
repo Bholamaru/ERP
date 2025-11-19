@@ -37,7 +37,11 @@ class outwardchallanview(viewsets.ModelViewSet):
 class OnwardChallanViewSet(viewsets.ModelViewSet):
     queryset         = onwardchallan.objects.all()
     serializer_class = OnwardChallanSerializer
-    
+
+
+
+
+
 class deletechallan(APIView):
     def delete(self, request,id):
         # challan_no = request.data.get('challan_no')
@@ -167,51 +171,54 @@ class challanview(APIView):
     
 from Purchase.models import NewJobWorkItemDetails
 from Purchase.serializers import NewJobWorkItemDetailsSerializer
-class inwardchallanview(APIView):
-    def get(self, request):
-        supplier = request.query_params.get('supplier')
-        if not supplier:
-            return Response({"error": "supplier parameter is required."}, status=400)
 
-        supplier = supplier.strip()
-        purchase_orders = PurchasePO.objects.filter(
-            Q(Supplier__icontains=supplier) |
-            Q(Supplier__iexact=supplier)
-        )
-        if not purchase_orders.exists():
-            return Response(
-                {"error": f"No PurchasePO found for supplier '{supplier}'"},
-                status=404
-            )
+# class inwardchallanview(APIView):
+#     def get(self, request):
+#         supplier = request.query_params.get('supplier')
+#         if not supplier:
+#             return Response({"error": "supplier parameter is required."}, status=400)
 
-        results = []
-        all_details = []
+#         supplier = supplier.strip()
+#         purchase_orders = PurchasePO.objects.filter(
+#             Q(Supplier__icontains=supplier) |
+#             Q(Supplier__iexact=supplier)
+#         )
+#         if not purchase_orders.exists():
+#             return Response(
+#                 {"error": f"No PurchasePO found for supplier '{supplier}'"},
+#                 status=404
+#             )
 
-        for po in purchase_orders:
-            # 1) Items on this PO
-            items_qs = po.items.all()
-            items_data = ItemSerializer(items_qs, many=True).data
+#         results = []
+#         all_details = []
 
-            # 2) Details on this PO
-            detail_qs = po.Item_Detail_Enter.all()  # or use the related_name you set
-            details_data = NewJobWorkItemDetailsSerializer(detail_qs, many=True).data
+#         for po in purchase_orders:
+#             # 1) Items on this PO
+#             items_qs = po.items.all()
+#             items_data = ItemSerializer(items_qs, many=True).data
 
-            # collect into the per‑PO results
-            results.append({
-                "purchase_order_no": po.PoNo,
-                "items": items_data,
-                "item_details": details_data,      # <-- this is already an array
-            })
+#             # 2) Details on this PO
+#             detail_qs = po.Item_Detail_Enter.all()  # or use the related_name you set
+#             details_data = NewJobWorkItemDetailsSerializer(detail_qs, many=True).data
 
-            # also flatten into a single array if you need that
-            all_details.extend(details_data)
-            all_details.extend(items_data)
+#             # collect into the per‑PO results
+#             results.append({
+#                 "purchase_order_no": po.PoNo,
+#                 "items": items_data,
+#                 "item_details": details_data,      # <-- this is already an array
+#             })
 
-        return Response({
-            "supplier": supplier,
-            "results": results,                  # list of per‑PO dicts
-            "all_item_details": all_details,     # flat list of every detail
-        }, status=status.HTTP_200_OK)
+#             # also flatten into a single array if you need that
+#             all_details.extend(details_data)
+#             all_details.extend(items_data)
+
+#         return Response({
+#             "supplier": supplier,
+#             "results": results,                  # list of per‑PO dicts
+#             "all_item_details": all_details,     # flat list of every detail
+#         }, status=status.HTTP_200_OK)
+    
+
 class supplierview(APIView):
     def get(self, request):
         supplier = request.query_params.get('supplier')
@@ -238,6 +245,12 @@ def generate_onwardchallan_pdf(request, pk):
     challan = get_object_or_404(onwardchallan, pk=pk)
     items = challan.items.all()
 
+    total=0
+    for item in items:
+        item.value = (item.qtyNo or 1) * (item.wRate or 1)
+        total=total+item.value
+    challan.Amount=total
+
     context = {
         'challan': challan,
         'items': items,
@@ -250,3 +263,178 @@ def generate_onwardchallan_pdf(request, pk):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="onwardchallan_{pk}.pdf"'
     return response
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Q
+from Purchase.models import *
+
+class inwardchallanview(APIView):
+    def get(self, request):
+        supplier = request.query_params.get('supplier')
+        if not supplier:
+            return Response({"error": "supplier parameter is required."}, status=400)
+
+        supplier = supplier.strip()
+        purchase_orders = NewJobWorkPoInfo.objects.filter(
+            Q(Supplier__icontains=supplier) |
+            Q(Supplier__iexact=supplier)
+        )
+        if not purchase_orders.exists():
+            return Response(
+                {"error": f"No NewJobWorkPoInfo found for supplier '{supplier}'"},
+                status=404
+            )
+
+        results = []
+        all_details = []
+
+        for po in purchase_orders:
+            
+            item_details_qs = po.Item_Detail_Enter.all()
+            gst_details_qs = po.Gst_Details.all()
+            schedule_line_qs = po.Schedule_Line.all()
+            ship_to_add_qs = po.Ship_To_Add.all()
+
+            items_data = NewJobWorkItemDetailsSerializer(item_details_qs, many=True).data
+            # gst_data = NewJobWorkGstDetailsSerializer(gst_details_qs, many=True).data
+            # schedule_data = NewJobWorkScheduleLineSerializer(schedule_line_qs, many=True).data
+            # ship_to_data = NewJobWorkShipToAddSerializer(ship_to_add_qs, many=True).data
+
+            results.append({
+                "po_no": po.PoNo,
+                "po_type": po.PoType,
+                "supplier": po.Supplier,
+                "po_date": po.PoDate,
+                "items": items_data,
+                # "gst_details": gst_data,
+                # "schedule_lines": schedule_data,
+                # "ship_to_address": ship_to_data,
+            })
+
+            # Flatten all details if needed
+            all_details.extend(items_data)
+            # all_details.extend(gst_data)
+            # all_details.extend(schedule_data)
+            # all_details.extend(ship_to_data)
+
+        return Response({
+            "supplier": supplier,
+            "results": results,
+            "all_details": all_details,
+        }, status=status.HTTP_200_OK)
+
+
+
+
+# class inwardchallanview(APIView):
+#     def get(self, request):
+#         supplier = request.query_params.get('supplier')
+
+#         if not supplier:
+#             return Response({"error": "supplier parameter is required."}, status=400)
+
+#         supplier = supplier.strip()
+#         purchase_orders = NewJobWorkPoInfo.objects.filter(
+#             Q(Supplier__icontains=supplier) |
+#             Q(Supplier__iexact=supplier)
+#         )
+
+#         if not purchase_orders.exists():
+#             return Response(
+#                 {"error": f"No NewJobWorkPoInfo found for supplier '{supplier}'"},
+#                 status=404
+#             )
+
+#         results = []
+#         all_details = []
+
+#         for po in purchase_orders:
+           
+#             item_details_qs = po.Item_Detail_Enter.filter(item_type__iexact="FG")
+
+#             items_data = NewJobWorkItemDetailsSerializer(item_details_qs, many=True).data
+
+#             # Skip PO if no FG items
+#             if not items_data:
+#                 continue
+
+#             results.append({
+#                 "po_no": po.PoNo,
+#                 "po_type": po.PoType,
+#                 "supplier": po.Supplier,
+#                 "po_date": po.PoDate,
+#                 "items": items_data,
+#             })
+
+#             all_details.extend(items_data)
+
+#         return Response({
+#             "supplier": supplier,
+#             "item_type": "FG",   # Always FG
+#             "results": results,
+#             "all_details": all_details,
+#         }, status=status.HTTP_200_OK)
+
+
+
+class InwardChallanRMView(APIView):
+    def get(self, request):
+        supplier = request.query_params.get('supplier')
+
+        if not supplier:
+            return Response({"error": "supplier parameter is required."}, status=400)
+
+        supplier = supplier.strip()
+        purchase_orders = NewJobWorkPoInfo.objects.filter(
+            Q(Supplier__icontains=supplier) |
+            Q(Supplier__iexact=supplier)
+        )
+
+        if not purchase_orders.exists():
+            return Response(
+                {"error": f"No NewJobWorkPoInfo found for supplier '{supplier}'"},
+                status=404
+            )
+
+        results = []
+        # all_details = []
+
+        for po in purchase_orders:
+            #  Always filter items with item_type = 'RM'
+            item_details_qs = po.Item_Detail_Enter.filter(item_type__iexact="RM")
+
+            items_data = NewJobWorkItemDetailsSerializer(item_details_qs, many=True).data
+
+            # Skip PO if no RM items
+            if not items_data:
+                continue
+
+            results.append({
+                "po_no": po.PoNo,
+                "po_type": po.PoType,
+                "supplier": po.Supplier,
+                "po_date": po.PoDate,
+                "items": items_data,
+            })
+
+            # all_details.extend(items_data)
+
+        return Response({
+            "supplier": supplier,
+            "item_type": "RM",   # Always RM
+            "results": results,
+            # "all_details": all_details,
+        }, status=status.HTTP_200_OK)
+
+from .utils import create_reworknumber
+class generate_unique_rework_number(APIView):
+    def get(self, request):
+        try:
+            rework_no = create_reworknumber()
+            return Response({"Rework_no": rework_no}, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

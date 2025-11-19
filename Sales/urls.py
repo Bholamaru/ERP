@@ -1,7 +1,7 @@
 from rest_framework.routers import DefaultRouter
 from .views import OnwardChallanViewSet
 from django.urls import path
-from .views import generate_unique_challan_number
+from .views import generate_unique_challan_number,generate_unique_rework_number
 from .views import deletechallan 
 from .views import transportdetailsview
 from .views import deletetransportdetails
@@ -10,10 +10,11 @@ from .views import vehicaldetailsview
 from .views import deletevehicaldetails 
 from .views import editvehicaldetails
 from .views import purchaseview
-from .views import inwardchallanview
+from .views import inwardchallanview,InwardChallanRMView
 from .views import outwardchallanview
 from .views import supplierview
 from .import views
+
 router = DefaultRouter()
 router.register(r'onwardchallan', OnwardChallanViewSet)
 router.register(r'transportdetails', transportdetailsview)
@@ -34,4 +35,7 @@ urlpatterns=router.urls+[
 #    path('inward/', views.inward, name='inward'),
     path('supplierview/',supplierview.as_view(),name='onwardchallandetails-by-supplier'),
     path('onwardchallan/pdf/<int:pk>/', views.generate_onwardchallan_pdf,name='pdf'),
+
+    path('inwardchallanrmview/',InwardChallanRMView.as_view(), name="inwardcahllan-rm-views"),
+    path("genrate-rework-no",generate_unique_rework_number.as_view(),name='Genrate-Rework-number')
 ]

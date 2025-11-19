@@ -324,10 +324,18 @@ class IndentSerializer(serializers.ModelSerializer):
         return instance
     
 # New JobWork Purchase Order
+
+
 class NewJobWorkItemDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = NewJobWorkItemDetails
-        fields = '__all__'
+        # fields = '__all__'
+       
+        fields = [
+            'id', 'purchase_order','ItemName', 'item_type', 'ItemDescription',
+            'OutAndInPart', 'Rate', 'Disc', 'Qty', 'Unit', 'Particular',
+            'Version', 'ItemStatus', 'CSCode', 'Note'
+        ]
 
 class NewJobWorkGstDetailsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -512,8 +520,18 @@ class BOMItemWithnewjobwork(serializers.ModelSerializer):
         model = BOMItem
         fields = [
             'id',      
+            'BomPartCode',
+            'BomPartDesc',
             'part_code',
             'part_no',
             'Name_Description',
-             'OPNo', 'Operation', 'PartCode','BOMPartType',
+            'OPNo', 'Operation', 'PartCode','BOMPartType','QtyKg'
         ]
+
+
+
+
+class PoSupplierFilterSerializer(serializers.Serializer):
+    Supplier = serializers.CharField()
+    OutAndInPart = serializers.CharField()
+    Qty = serializers.CharField()

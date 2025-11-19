@@ -57,10 +57,15 @@ from rest_framework import serializers
 from .models import GrnGenralDetail, NewGrnList, GrnGst, GrnGstTDC
 
 class NewGrnListSerializer(serializers.ModelSerializer):
+    remaining_qty = serializers.SerializerMethodField()
+    GrnQty = serializers.DecimalField(max_digits=12, decimal_places=2, coerce_to_string=False)  
+
     class Meta:
         model = NewGrnList
-        fields = '__all__'
-
+        fields = '__all__' 
+    
+    
+    
 class GrnGstSerializer(serializers.ModelSerializer):
     class Meta:
         model = GrnGst
@@ -408,13 +413,68 @@ class PurchasePOSerializer(serializers.ModelSerializer):
 
 
 # New Material Issue Serializer
-from .models import MaterialChallan
-from .models import MaterialChallanTable
+# from .models import MaterialChallan
+# from .models import MaterialChallanTable
+
+# class MaterialChallanTableSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = MaterialChallanTable
+#         fields = ['ItemDescription', 'Stock', 'HeatNo','Qty', 'Machine', 'NatureOfWork', 'MrnNo', 'CoilNo', 'Employee', 'Dept']
+
+# class MaterialChallanSerializer(serializers.ModelSerializer):
+#     MaterialChallanTable = MaterialChallanTableSerializer(many=True)
+
+#     class Meta:
+#         model = MaterialChallan
+#         fields = '__all__'
+        
+
+#     def create(self, validated_data):
+#         Material_Table_data = validated_data.pop('MaterialChallanTable')
+#         Material_Issue_details = MaterialChallan.objects.create(**validated_data)
+
+#         for item_data in Material_Table_data:
+#             MaterialChallanTable.objects.create(MaterialChallanDetail=Material_Issue_details, **item_data)
+
+#         return Material_Issue_details
+
+#     def update(self, instance, validated_data):
+#         Material_Table_data = validated_data.pop('MaterialChallanTable', None)
+
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+#         instance.save()
+
+#         if Material_Table_data:
+#             instance.MaterialChallanTable.all().delete()
+#             for item_data in Material_Table_data:
+#                 MaterialChallanTable.objects.create(MaterialChallanDetail=instance, **item_data)
+
+#         return instance
+    
+
+
+
+
+
+
+
+
+
+from rest_framework import serializers
+from decimal import Decimal
+from .models import MaterialChallan, MaterialChallanTable, NewGrnList
+
 
 class MaterialChallanTableSerializer(serializers.ModelSerializer):
     class Meta:
         model = MaterialChallanTable
-        fields = ['ItemDescription', 'Stock', 'Qty', 'Machine', 'NatureOfWork', 'MrnNo', 'CoilNo', 'Employee', 'Dept']
+        fields = [
+            'ItemDescription', 'Stock', 'HeatNo', 'Qty',
+            'Machine', 'NatureOfWork', 'MrnNo', 'CoilNo',
+            'Employee', 'Dept'
+        ]
+
 
 class MaterialChallanSerializer(serializers.ModelSerializer):
     MaterialChallanTable = MaterialChallanTableSerializer(many=True)
@@ -422,31 +482,70 @@ class MaterialChallanSerializer(serializers.ModelSerializer):
     class Meta:
         model = MaterialChallan
         fields = '__all__'
-        
 
     def create(self, validated_data):
-        Material_Table_data = validated_data.pop('MaterialChallanTable')
-        Material_Issue_details = MaterialChallan.objects.create(**validated_data)
+        table_data = validated_data.pop("MaterialChallanTable", [])
+        challan = MaterialChallan.objects.create(**validated_data)
 
-        for item_data in Material_Table_data:
-            MaterialChallanTable.objects.create(MaterialChallanDetail=Material_Issue_details, **item_data)
+        for item_data in table_data:
+            table_item = MaterialChallanTable.objects.create(MaterialChallanDetail=challan, **item_data)
 
-        return Material_Issue_details
+            # --- Subtract Qty from NewGrnList.GrnQty where HeatNo matches ---
+            heat_no = (table_item.HeatNo or "").strip()
+            qty = Decimal(table_item.Qty or 0)
+
+            grn_items = NewGrnList.objects.filter(HeatNo__iexact=heat_no)
+            for grn_item in grn_items:
+                current_qty = Decimal(grn_item.GrnQty or 0)
+                grn_item.GrnQty = max(current_qty - qty, Decimal(0))
+                grn_item.save(update_fields=["GrnQty"])
+                print(f" GRN {grn_item.id} updated: {current_qty} → {grn_item.GrnQty}")
+
+        return challan
 
     def update(self, instance, validated_data):
-        Material_Table_data = validated_data.pop('MaterialChallanTable', None)
+        table_data = validated_data.pop("MaterialChallanTable", [])
 
+        # --- Update main challan fields ---
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        if Material_Table_data:
-            instance.MaterialChallanTable.all().delete()
-            for item_data in Material_Table_data:
-                MaterialChallanTable.objects.create(MaterialChallanDetail=instance, **item_data)
+        # --- Restore old GRN quantities ---
+        old_items = MaterialChallanTable.objects.filter(MaterialChallanDetail=instance)
+        for old_item in old_items:
+            heat_no = (old_item.HeatNo or "").strip()
+            qty = Decimal(old_item.Qty or 0)
+            grn_items = NewGrnList.objects.filter(HeatNo__iexact=heat_no)
+            for grn_item in grn_items:
+                grn_item.GrnQty = Decimal(grn_item.GrnQty or 0) + qty
+                grn_item.save(update_fields=["GrnQty"])
+                print(f" GRN {grn_item.id} restored: +{qty}")
+        old_items.delete()
+
+        # --- Create new rows and subtract again ---
+        for item_data in table_data:
+            table_item = MaterialChallanTable.objects.create(MaterialChallanDetail=instance, **item_data)
+            heat_no = (table_item.HeatNo or "").strip()
+            qty = Decimal(table_item.Qty or 0)
+
+            grn_items = NewGrnList.objects.filter(HeatNo__iexact=heat_no)
+            for grn_item in grn_items:
+                current_qty = Decimal(grn_item.GrnQty or 0)
+                grn_item.GrnQty = max(current_qty - qty, Decimal(0))
+                grn_item.save(update_fields=["GrnQty"])
+                print(f" GRN {grn_item.id} updated: {current_qty} → {grn_item.GrnQty}")
 
         return instance
-    
+
+
+
+
+
+
+
+
+
 
 
 # New Gate Entry:- Fetch Supplier with PDF
@@ -468,7 +567,15 @@ class ItemSearchResultSerializer(serializers.Serializer):
 
     def get_pdf_link(self, obj):
         request = self.context.get('request')
-        return request.build_absolute_uri(f'/Purchase/PoOrder/pdf/{obj["po_id"]}/')
+        if obj.get("source") == "purchase":   
+            return request.build_absolute_uri(f'/Purchase/PoOrder/pdf/{obj["po_id"]}/')
+        # elif obj.get("source") == "jobwork":
+        #     return request.build_absolute_uri(f'/JobWork/PoOrder/pdf/{obj["po_id"]}/')
+        return None
+
+    # def get_pdf_link(self, obj):
+    #     request = self.context.get('request')
+    #     return request.build_absolute_uri(f'/Purchase/PoOrder/pdf/{obj["po_id"]}/')
 
 
 
@@ -656,46 +763,155 @@ from Production.models import ProductionEntry
 #         total = sum(int(e.reject_qty or 0) for e in entries)
 #         return total
 
+# class WipSerializer(serializers.ModelSerializer):
+#     part_code = serializers.CharField(source='item.Part_Code', read_only=True)
+#     Name_Description = serializers.CharField(source='item.Name_Description', read_only=True)
+#     part_no = serializers.CharField(source='item.part_no', read_only=True)
+#     prod_qty=serializers.SerializerMethodField()
+#     rework_qty = serializers.SerializerMethodField()
+#     reject_qty = serializers.SerializerMethodField()   
+#     pending_qc = serializers.SerializerMethodField()
+
+#     class Meta:
+#         model = BOMItem
+#         fields = [
+#             'part_code', 'part_no', 'Name_Description',
+#             'OPNo', 'Operation', 'PartCode',
+#             'rework_qty', 'reject_qty','prod_qty',
+#             'WipWt', 'WipRate',
+#             'pending_qc'
+#         ]
+   
+#     def get_prod_qty(self, obj):
+#         entries = ProductionEntry.objects.filter(
+#             item=obj.item.Part_Code,
+#             operation=obj.Operation
+#         )
+#         return sum(int(e.prod_qty or 0) for e in entries)
+
+#     def get_rework_qty(self, obj):
+#         entries = ProductionEntry.objects.filter(
+#             item=obj.item.Part_Code,
+#             operation=obj.Operation
+#         )
+#         return sum(int(e.rework_qty or 0) for e in entries)
+
+#     def get_reject_qty(self, obj):
+#         entries = ProductionEntry.objects.filter(
+#             item=obj.item.Part_Code,
+#             operation=obj.Operation
+#         )
+#         return sum(int(e.reject_qty or 0) for e in entries)
+
+#     # 🔹 totals across all operations of same part
+#     def get_total_rework_qty(self, obj):
+#         entries = ProductionEntry.objects.filter(item=obj.item.Part_Code)
+#         return sum(int(e.rework_qty or 0) for e in entries)
+
+#     def get_total_reject_qty(self, obj):
+#         entries = ProductionEntry.objects.filter(item=obj.item.Part_Code)
+#         return sum(int(e.reject_qty or 0) for e in entries)
+
+#     # 🔹 QC check
+#     def get_pending_qc(self, obj):
+#         prod_qty = self.get_prod_qty(obj)
+#         qc_value = (obj.QC or "").strip().lower()
+#         if qc_value in ["yes", "y", "true", "1"]:
+#             return prod_qty
+#         return 0
+    
+
+
+
+
+    #new   
 class WipSerializer(serializers.ModelSerializer):
     part_code = serializers.CharField(source='item.Part_Code', read_only=True)
     Name_Description = serializers.CharField(source='item.Name_Description', read_only=True)
     part_no = serializers.CharField(source='item.part_no', read_only=True)
+    prod_qty = serializers.SerializerMethodField()
     rework_qty = serializers.SerializerMethodField()
-    reject_qty = serializers.SerializerMethodField()
-    total_rework_qty = serializers.SerializerMethodField()  # ✅ new field
-    total_reject_qty = serializers.SerializerMethodField()  # ✅ optional
+    reject_qty = serializers.SerializerMethodField()   
+    pending_qc = serializers.SerializerMethodField()
 
     class Meta:
         model = BOMItem
         fields = [
             'part_code', 'part_no', 'Name_Description',
             'OPNo', 'Operation', 'PartCode',
-            'rework_qty', 'reject_qty',
-            'total_rework_qty', 'total_reject_qty',
-            'WipWt', 'WipRate'
+            'rework_qty', 'reject_qty', 'prod_qty',
+            'WipWt', 'WipRate',
+            'pending_qc'
         ]
 
-    def get_rework_qty(self, obj):
-        part_code = obj.item.Part_Code
-        operation = obj.Operation
-        entries = ProductionEntry.objects.filter(item=part_code, operation=operation)
+    def get_prod_qty(self, obj):
+        """Get total production quantity for this BOMItem from ProductionEntry"""
+        try:
+            # Filter ProductionEntry by item (Part_Code) and operation
+            production_entries = ProductionEntry.objects.filter(
+                item=obj.item.Part_Code,  # Assuming item field in ProductionEntry matches Part_Code
+                operation=obj.Operation   # Match the operation
+            )
+            
+            # Sum up all production quantities
+            total_qty = 0
+            for entry in production_entries:
+                if entry.prod_qty and entry.prod_qty.strip():
+                    try:
+                        total_qty += float(entry.prod_qty)
+                    except (ValueError, TypeError):
+                        continue  # Skip invalid values
+            
+            return total_qty
+        except Exception:
+            return 0
 
-        return sum(int(e.rework_qty or 0) for e in entries)
+    def get_rework_qty(self, obj):
+        """Get total rework quantity for this BOMItem from ProductionEntry"""
+        try:
+            production_entries = ProductionEntry.objects.filter(
+                item=obj.item.Part_Code,
+                operation=obj.Operation
+            )
+            
+            total_qty = 0
+            for entry in production_entries:
+                if entry.rework_qty and entry.rework_qty.strip():
+                    try:
+                        total_qty += float(entry.rework_qty)
+                    except (ValueError, TypeError):
+                        continue
+            
+            return total_qty
+        except Exception:
+            return 0
 
     def get_reject_qty(self, obj):
-        part_code = obj.item.Part_Code
-        operation = obj.Operation
-        entries = ProductionEntry.objects.filter(item=part_code, operation=operation)
+        """Get total reject quantity for this BOMItem from ProductionEntry"""
+        try:
+            production_entries = ProductionEntry.objects.filter(
+                item=obj.item.Part_Code,
+                operation=obj.Operation
+            )
+            
+            total_qty = 0
+            for entry in production_entries:
+                if entry.reject_qty and entry.reject_qty.strip():
+                    try:
+                        total_qty += float(entry.reject_qty)
+                    except (ValueError, TypeError):
+                        continue
+            
+            return total_qty
+        except Exception:
+            return 0
 
-        return sum(int(e.reject_qty or 0) for e in entries)
-
-    def get_total_rework_qty(self, obj):
-        part_code = obj.item.Part_Code
-        entries = ProductionEntry.objects.filter(item=part_code)
-
-        return sum(int(e.rework_qty or 0) for e in entries)
-
-    def get_total_reject_qty(self, obj):
-        part_code = obj.item.Part_Code
-        entries = ProductionEntry.objects.filter(item=part_code)
-        return sum(int(e.reject_qty or 0) for e in entries)
+    def get_pending_qc(self, obj):
+        """Check BOMItem pending_qc field and return prod_qty if Yes/Y, otherwise 0"""
+        # Check if BOMItem has pending_qc field set to Yes/Y
+        if hasattr(obj, 'pending_qc') and obj.pending_qc:
+            pending_qc_value = str(obj.pending_qc).strip().upper()
+            if pending_qc_value in ['YES', 'Y']:
+                return self.get_prod_qty(obj)
+        
+        return 0

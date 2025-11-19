@@ -24,24 +24,49 @@ class outwardchallanSerializer(serializers.ModelSerializer):
         model=outwardchallan
         fields='__all__'
 
+
+
+
+from .models import Store
 class OnwardChallanItemSerializer(serializers.ModelSerializer):
-    # heat_no = serializers.CharField(source='grn_detail.HeatNo', read_only=True)   
     grndetails=GrnGenralDetailSerializer(source='items',many=True, read_only=True)
+    
     class Meta:
         model  = OnwardChallanItem
         fields = [
             "item_code", "type", "description",
             "store", "suppRefNo", "qtyNo", "qtyKg",
             "process", "pkg", "wRate", "wValue",
-            "grndetails"
+            "grndetails","stock",
         ]
-    def create(self, validated_data):
-        grn_details_data = validated_data.pop('items', [])
-        onward_item = OnwardChallanItem.objects.create(**validated_data)
-        for grn_data in grn_details_data:
-            GrnGenralDetail.objects.create(item=onward_item, **grn_data)
-        return onward_item
+        extra_kwargs = {
+            "stock": {"write_only": True}  
+        }
+    
 
+    def validate(self, attrs):
+        qtyNo = attrs.get("qtyNo")
+        stock = attrs.get("stock")
+
+        try:
+            qtyNo = float(qtyNo)
+            stock = float(stock)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({"stock": "Invalid stock or quantity value."})
+
+        if qtyNo > stock:
+            raise serializers.ValidationError({
+                "qtyNo": f"Quantity ({qtyNo}) cannot be greater than available stock ({stock})."
+            })
+
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("stock", None)  
+        return OnwardChallanItem.objects.create(**validated_data)
+
+from Store.models import NewGrnList
+from decimal import Decimal
 class OnwardChallanSerializer(serializers.ModelSerializer):
     items = OnwardChallanItemSerializer(many=True)
 
@@ -56,10 +81,65 @@ class OnwardChallanSerializer(serializers.ModelSerializer):
             "vender", "items","id"
         ]
 
+    
     def create(self, validated_data):
         items_data = validated_data.pop("items", [])
         challan = onwardchallan.objects.create(**validated_data)
-        OnwardChallanItem.objects.bulk_create([
-            OnwardChallanItem(challan=challan, **item) for item in items_data
-        ])
+
+        for item_data in items_data:
+            item = OnwardChallanItem.objects.create(challan=challan, **item_data)
+            # Subtract qtyNo from GRNQty
+            store = item.store.strip()
+            qty = Decimal(item.qtyNo or 0)
+            grn_items = NewGrnList.objects.filter(HeatNo__iexact=store)
+            for grn_item in grn_items:
+                current_qty = Decimal(grn_item.GrnQty or 0)
+                grn_item.GrnQty = max(current_qty - qty, Decimal(0))
+                grn_item.save(update_fields=["GrnQty"])
+                print(f"✅ GRN {grn_item.id} updated: {current_qty} → {grn_item.GrnQty}")
+
         return challan
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop("items", [])
+        # Update challan fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Delete old items and restore their qty to GRN
+        old_items = OnwardChallanItem.objects.filter(challan=instance)
+        for old_item in old_items:
+            store = old_item.store.strip()
+            qty = Decimal(old_item.qtyNo or 0)
+            grn_items = NewGrnList.objects.filter(HeatNo__iexact=store)
+            for grn_item in grn_items:
+                grn_item.GrnQty = Decimal(grn_item.GrnQty or 0) + qty
+                grn_item.save(update_fields=["GrnQty"])
+                print(f"♻️ GRN {grn_item.id} restored: +{qty}")
+        old_items.delete()
+
+        # Create new items and subtract qtyNo
+        for item_data in items_data:
+            item = OnwardChallanItem.objects.create(challan=instance, **item_data)
+            store = item.store.strip()
+            qty = Decimal(item.qtyNo or 0)
+            grn_items = NewGrnList.objects.filter(HeatNo__iexact=store)
+            for grn_item in grn_items:
+                current_qty = Decimal(grn_item.GrnQty or 0)
+                grn_item.GrnQty = max(current_qty - qty, Decimal(0))
+                grn_item.save(update_fields=["GrnQty"])
+                print(f"✅ GRN {grn_item.id} updated: {current_qty} → {grn_item.GrnQty}")
+
+        return instance
+
+
+    # def create(self, validated_data):
+    #     items_data = validated_data.pop("items", [])
+    #     challan = onwardchallan.objects.create(**validated_data)
+    #     OnwardChallanItem.objects.bulk_create([
+    #         OnwardChallanItem(challan=challan, **item) for item in items_data
+    #     ])
+    #     return challan
+
+

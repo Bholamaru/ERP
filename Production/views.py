@@ -837,7 +837,7 @@ class ProductDetailGetView(ListAPIView):
 
 
 
-# production me allmaster itemtable data
+# productionentry  me allmaster itemtable data
 from All_Masters.models import *
 from .serializers import ItemdropdownSerializer
 class ItemdropdownAPIView(generics.ListAPIView):
@@ -965,3 +965,137 @@ class HeatNoListAPIView(APIView):
 
 #         return Response(grouped_data, status=status.HTTP_200_OK)
 
+
+
+
+from django.db.models import Sum, F, Value,FloatField
+from django.db.models.functions import Coalesce,Cast
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from Store.models import MaterialChallan, MaterialChallanTable
+
+
+class ItemHeatQtyView(APIView):
+    def get(self, request):
+        item = request.GET.get("item")
+        if not item:
+            return Response({"error": "Item parameter is required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        challans = MaterialChallan.objects.filter(Item__icontains=item)
+
+        if not challans.exists():
+            return Response({"message": f"No data found for item: {item}"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        #  Cast Qty (CharField) → Float before summing
+        heat_qty_data = (
+            MaterialChallanTable.objects
+            .filter(MaterialChallanDetail__in=challans)
+            .values("HeatNo")
+            .annotate(
+                total_qty=Sum(
+                    Coalesce(Cast(F("Qty"), FloatField()), Value(0.0))
+                )
+            )
+            .order_by("HeatNo")
+        )
+
+        # Replace None with readable label
+        heat_qty_list = [
+            {
+                "HeatNo": entry["HeatNo"] if entry["HeatNo"] else "No HeatNo",
+                "Qty": entry["total_qty"]
+            }
+            for entry in heat_qty_data
+        ]
+
+        return Response({
+            "item": item,
+            "heat_qty_list": heat_qty_list
+        }, status=status.HTTP_200_OK)
+    
+
+    
+# class ProductionGroupedByOperation(APIView):
+#     def get(self, request):
+#         item = request.query_params.get("item")
+#         operation = request.query_params.get("operation")
+#         prod_no = request.query_params.get("prod_no")
+
+#         entries = ProductionEntry.objects.all()
+
+#         if item:
+#             entries = entries.filter(item=item)
+
+#         if operation:
+#             entries = entries.filter(operation=operation)
+
+#         if prod_no:
+#             entries = entries.filter(Prod_no=prod_no)
+
+#         grouped = {}
+
+#         for e in entries:
+#             opno = e.operation
+#             if opno not in grouped:
+#                 grouped[opno] = []
+
+#             grouped[opno].append({
+#                 "lot_no": e.lot_no,
+#                 "prod_qty": e.prod_qty
+#             })
+#         return Response(grouped)
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import ProductionEntry
+from collections import defaultdict
+def safe_float(value):
+    try:
+        return float(value)
+    except:
+        return 0
+class ProductionGroupedByOperation(APIView):
+    def get(self, request):
+        item = request.query_params.get("item")
+        operation = request.query_params.get("operation")
+        prod_no = request.query_params.get("prod_no")
+        entries = ProductionEntry.objects.all()
+
+        if item:
+            entries = entries.filter(item=item)
+
+        if operation:
+             entries = entries.filter(operation=operation)
+
+        if prod_no:
+             entries = entries.filter(Prod_no=prod_no)
+
+        result = {}
+
+        for e in entries:
+            opno = e.operation
+
+            # extract only first part before '|'
+            lot = (e.lot_no or "").split("|")[0]
+
+            qty = safe_float(e.prod_qty or 0)
+
+            if opno not in result:
+                result[opno] = defaultdict(float)
+
+            result[opno][lot] += qty
+
+        # Convert to final JSON format
+        final_output = {
+            op: [{"lot_no": lot, "prod_qty": qty}]
+            for op, lots in result.items()
+            for lot, qty in lots.items()
+        }
+
+        return Response(result, status=status.HTTP_200_OK)

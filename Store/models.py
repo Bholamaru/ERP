@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import User 
+from django.utils import timezone
 from Sales.models import OnwardChallanItem
+
 
 # Store Module:- Gate Inward Entry:- General Details
 class GeneralDetails(models.Model):
@@ -84,9 +86,10 @@ class NewMRNTable(models.Model):
     Employee = models.CharField(max_length=255, blank=True, null=True)
     Dept = models.CharField(max_length=255, blank=True, null=True)
     Remark_1 = models.CharField(max_length=255, blank=True, null=True)
-
     def __str__(self):
-        return self.ItemCode - self.Description
+       return f"{self.ItemCode or ''} - {self.Description or ''}"
+
+
 
 # Store Module:- Purchase GRN: General Details
 class GrnGenralDetail(models.Model):
@@ -103,7 +106,8 @@ class GrnGenralDetail(models.Model):
         
     GrnNo = models.CharField(max_length=255, blank=True, null=True)
     GrnDate = models.CharField(max_length=255, blank=True, null=True)
-    GrnTime = models.CharField(max_length=255, blank=True, null=True)
+    # GrnTime = models.CharField(max_length=255, blank=True, null=True)
+    GrnTime = models.TimeField(auto_now_add=True)
     ChallanNo = models.CharField(max_length=255, blank=True, null=True)
     ChallanDate = models.CharField(max_length=255, blank=True, null=True)
     InvoiceNo = models.CharField(max_length=255, blank=True, null=True)
@@ -136,12 +140,16 @@ class NewGrnList(models.Model):
     PoQty = models.CharField(max_length=255, blank=True, null=True)
     BalQty = models.CharField(max_length=255, blank=True, null=True)
     ChalQty = models.CharField(max_length=255, blank=True, null=True)
-    GrnQty = models.CharField(max_length=255, blank=True, null=True)
+    # GrnQty = models.CharField(max_length=255, blank=True, null=True)
+    GrnQty = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True, null=True)
     ShortExcessQty = models.CharField(max_length=255, blank=True, null=True)
     UnitCode = models.CharField(max_length=255, blank=True, null=True)
     Total = models.CharField(max_length=255, blank=True, null=True)
     HeatNo = models.CharField(max_length=255, blank=True, null=True)
     MfgDate = models.CharField(max_length=255, blank=True, null=True)
+
+    
+
 
 class GrnGst(models.Model):
     New_MRN_Detail = models.ForeignKey(GrnGenralDetail, related_name="GrnGst", on_delete=models.CASCADE)
@@ -161,7 +169,7 @@ class GrnGst(models.Model):
     CESS = models.CharField(max_length=255, blank=True, null=True)
 
     def __str__(self):
-        return self.ItemCode - self.Description
+        return self.ItemCode
 
 class GrnGstTDC(models.Model):
     New_MRN_Detail = models.ForeignKey(GrnGenralDetail, related_name="GrnGstTDC", on_delete=models.CASCADE)
@@ -306,7 +314,7 @@ class Material_Issue_General(models.Model):
     Employee = models.CharField(max_length=255, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.ItemCode} - {self.ItemCode}"
+        return f"{self.Item} - {self.ItemDescription}"
 
 # Store Module:- DeliveryChallan
 class DeliveryChallan(models.Model):
@@ -403,7 +411,7 @@ class ItemTable(models.Model):
             
         super().save(*args, **kwargs)
 
-
+   
 
 
 # New Material Issue
@@ -434,6 +442,7 @@ class MaterialChallan(models.Model):
 class MaterialChallanTable(models.Model):
     MaterialChallanDetail = models.ForeignKey(MaterialChallan, related_name="MaterialChallanTable", on_delete=models.CASCADE )
     ItemDescription = models.CharField(max_length=255, blank=True, null=True)
+    HeatNo=models.CharField(max_length=255, blank=True,null=True)
     Stock = models.CharField(max_length=255, blank=True, null=True)
     Qty = models.CharField(max_length=255, blank=True, null=True)
     Unit = models.CharField(max_length=255, blank=True, null=True)
@@ -544,7 +553,7 @@ class InwardChallan2(models.Model):
     GRTotal = models.CharField(max_length=255, blank=True, null=True)
 
     def __str__(self):
-        return self.GateEntryNo
+        return str(self.ChallanNo) if self.ChallanNo else f"InwardChallan2 {self.id}"
 
 class InwardChallanTable(models.Model):
     InwardChallanDetail = models.ForeignKey(InwardChallan2, related_name="InwardChallanTable", on_delete=models.CASCADE)
@@ -561,7 +570,7 @@ class InwardChallanTable(models.Model):
     JwRate = models.CharField(max_length=255, blank=True, null=True)
 
     def __str__(self):
-        return self.OutNo
+        return str(self.OutNo) if self.OutNo else f"InwardChallan {self.id}"
 
 class InwardChallanGSTDetails(models.Model):
     InwardChallanDetail = models.ForeignKey(InwardChallan2, related_name="InwardChallanGSTDetails", on_delete=models.CASCADE)

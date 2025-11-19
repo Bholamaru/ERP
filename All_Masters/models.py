@@ -174,7 +174,10 @@ class ItemTable(models.Model):
     KgMM3 = models.CharField(max_length=50, blank=True, null=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     is_verified = models.BooleanField(default=True)
-
+    
+    def __str__(self):
+      return f"Item {self.pk or 'New'}"
+    
 # Item Master models Data2
 class Item_Master_Data2_Model(models.Model):
     item = models.OneToOneField(ItemTable, related_name='item_master_data', on_delete=models.CASCADE)
@@ -906,7 +909,7 @@ class BOMItem(models.Model):
     OPNo = models.CharField(max_length=50, blank=True, null=True)
     PartCode = models.CharField(max_length=50, blank=True, null=True)
     BOMPartType = models.CharField(max_length=50, blank=True, null=True)
-    BomPartCode = models.CharField(max_length=50, blank=True, null=True)
+    BomPartCode = models.CharField(max_length=500, blank=True, null=True)
     QtyKg = models.CharField(max_length=50, blank=True, null=True)
     ScrapCode = models.CharField(max_length=50, blank=True, null=True)
     ScracpQty = models.CharField(max_length=50, blank=True, null=True)
@@ -978,3 +981,5 @@ class ItemTransaction2(models.Model):
     PoQty = models.DecimalField(max_digits=10, decimal_places=2)
     Unit = models.CharField(max_length=50)
     ParticularProcess = models.CharField(max_length=255)
+
+    

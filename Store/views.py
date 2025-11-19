@@ -607,25 +607,26 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from All_Masters.models import Item as Item2
-from Purchase.models import PurchasePO
+from Purchase.models import PurchasePO,NewJobWorkPoInfo
 from .serializers import ItemSearchResultSerializer
-
-
 class ItemSearchAPIView(APIView):
     def get(self, request):
         search_term = request.GET.get('query', '')
         if not search_term:
             return Response({"error": "Missing query parameter."}, status=status.HTTP_400_BAD_REQUEST)
 
+        results = []
+
+        # 1. Item → PurchasePO
         items = Item2.objects.filter(is_verified=True).filter(
             models.Q(Name__icontains=search_term) | models.Q(number__icontains=search_term)
         )
 
-        results = []
         for item in items:
             matching_pos = PurchasePO.objects.filter(CodeNo=item.number)
             for po in matching_pos:
                 results.append({
+                    "source": "purchase",
                     "Name": item.Name,
                     "number": item.number,
                     "Type": item.type,
@@ -633,8 +634,53 @@ class ItemSearchAPIView(APIView):
                     "po_id": po.id,
                 })
 
+        # 2. Direct search in NewJobWorkPoInfo (Supplier ya PoNo se)
+        jobwork_pos = NewJobWorkPoInfo.objects.filter(
+            models.Q(Supplier__icontains=search_term) | models.Q(PoNo__icontains=search_term)
+        )
+
+        for jw in jobwork_pos:
+            results.append({
+                "source": "jobwork",
+                "Name": jw.Supplier,
+                "number": item.number,
+                "Type": "JobWorkPO",
+                "PoNo": jw.PoNo,
+                "po_id": jw.id,
+            })
+
+        if not results:
+            return Response({"error": "No results found."}, status=status.HTTP_404_NOT_FOUND)
+
         serializer = ItemSearchResultSerializer(results, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# class ItemSearchAPIView(APIView):
+#     def get(self, request):
+#         search_term = request.GET.get('query', '')
+#         if not search_term:
+#             return Response({"error": "Missing query parameter."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         items = Item2.objects.filter(is_verified=True).filter(
+#             models.Q(Name__icontains=search_term) | models.Q(number__icontains=search_term)
+#         )
+
+#         results = []
+#         for item in items:
+#             matching_pos = PurchasePO.objects.filter(CodeNo=item.number)
+#             for po in matching_pos:
+#                 results.append({
+#                     "Name": item.Name,
+#                     "number": item.number,
+#                     "Type": item.type,
+#                     "PoNo": po.PoNo,
+#                     "po_id": po.id,
+#                 })
+
+#         serializer = ItemSearchResultSerializer(results, many=True, context={'request': request})
+#         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 
 # Gate Inward Entry Registered
@@ -1786,84 +1832,489 @@ from django.shortcuts import get_object_or_404
 from .models import GrnGenralDetail, NewGrnList, GrnGst, GrnGstTDC
 
 
+
+# from django.db.models import Sum
+# from collections import defaultdict
+# from rest_framework.decorators import api_view
+# from rest_framework.response import Response
+# from rest_framework import status
+# from django.shortcuts import get_object_or_404
+
+# @api_view(['GET'])
+# def get_grn_data(request, grn_id=None):
+#     try:
+#         # Fetch GRN items and GST data
+#         if grn_id:
+#             grn_detail = get_object_or_404(GrnGenralDetail, id=grn_id)
+#             grn_items = NewGrnList.objects.filter(New_MRN_Detail=grn_detail)
+#             grn_gst = GrnGst.objects.filter(New_MRN_Detail=grn_detail)
+#         else:
+#             grn_items = NewGrnList.objects.all()
+#             grn_gst = GrnGst.objects.all()
+
+#         # Initialize grouped data
+#         grouped_data = defaultdict(lambda: {
+#             "sr_no": None,
+#             "item_code": "",
+#             "description": "",
+#             "size": "",
+#             "group_name": "",
+#             "unit_code": "",
+#             "item_type": "",
+#             "po_rate_qty": "",
+#             "rate": "",
+#             "qc_stock": "",
+#             "f4_stock": "",
+#             "stock": 0,
+#             "shop_floor": '',
+#             "amount": 0,
+#             "po_no": "",
+#             "date": "",
+#             "mfg_date": "",
+#             "hsn": "",
+#             "po_rate": "",
+#             "discount_rate": "",
+#             "cgst": "",
+#             "sgst": "",
+#             "igst": "",
+#             "variants": []
+#         })
+
+#         for index, item in enumerate(grn_items, 1):
+#             gst_data = grn_gst.filter(ItemCode=item.ItemNoCode).first() if grn_gst else None
+#             item_master = ItemTable.objects.filter(Part_Code=item.ItemNoCode).first()
+
+#             # Calculate amount
+#             try:
+#                 rate = float(item.Rate) if item.Rate else 0
+#                 qty = float(item.GrnQty) if item.GrnQty else 0
+#                 amount = rate * qty
+#             except (ValueError, TypeError):
+#                 amount = 0
+
+#             # QC stock or normal stock
+#             qc_stock_value, stock_value = "", 0
+#             if item_master and item_master.QC_Application and item_master.QC_Application.lower() == "yes":
+#                 qc_stock_value = item.GrnQty or ""
+#             else:
+#                 stock_value = float(item.GrnQty or 0)
+
+#             # Shop floor value from MaterialChallanTable
+#             shop_floor_value = ""
+#             material_challan = MaterialChallan.objects.filter(Item=item.ItemNoCode).first()
+#             if material_challan:
+#                 challan_table = MaterialChallanTable.objects.filter(MaterialChallanDetail=material_challan).first()
+#                 if challan_table:
+#                     shop_floor_value = challan_table.Qty or ""
+
+#             # Get group for current item
+#             group = grouped_data[item.ItemNoCode]
+
+#             # Initialize group if first occurrence
+#             if not group["sr_no"]:
+#                 group.update({
+#                     "sr_no": index,
+#                     "item_code": item.ItemNoCode or '',
+#                     "description": item.Description or '',
+#                     "unit_code": item.UnitCode or '',
+#                     "po_rate_qty": item.PoQty or '',
+#                     "rate": item.Rate or '',
+#                     "qc_stock": qc_stock_value,
+#                     "f4_stock": "",
+#                     "stock": 0,
+#                     "shop_floor": shop_floor_value,
+#                     "amount": amount,
+#                     "po_no": item.PoNo or '',
+#                     "date": item.Date or '',
+#                     "mfg_date": item.MfgDate or '',
+#                     "hsn": gst_data.HSN if gst_data else '',
+#                     "po_rate": gst_data.PoRate if gst_data else '',
+#                     "discount_rate": gst_data.DiscRate if gst_data else '',
+#                     "cgst": gst_data.CGST if gst_data else '',
+#                     "sgst": gst_data.SGST if gst_data else '',
+#                     "igst": gst_data.IGST if gst_data else '',
+#                 })
+
+#             # Update total stock
+#             group["stock"] += stock_value
+
+#             # ✅ Calculate f4_stock (sum of all onward challan quantities)
+#             onward_total = OnwardChallanItem.objects.filter(
+#                 item_code__icontains=item.ItemNoCode
+#             ).aggregate(total_qty=Sum('qtyNo'))['total_qty'] or 0
+
+#             group["f4_stock"] = format(float(onward_total or group["stock"]), '.2f')
+
+#             # Append variant details
+#             group["variants"].append({
+#                 "heat_no": item.HeatNo or '',
+#                 "stock": str(stock_value),
+#                 "grn_qty": item.GrnQty or '',
+#                 "challan_qty": item.ChalQty or '',
+#                 "short_excess_qty": item.ShortExcessQty or '',
+#             })
+
+#         response_data = list(grouped_data.values())
+
+#         return Response({
+#             "success": True,
+#             "message": "Data fetched successfully",
+#             "data": response_data,
+#             "total_records": len(response_data)
+#         }, status=status.HTTP_200_OK)
+
+#     except Exception as e:
+#         return Response({
+#             "success": False,
+#             "message": f"Error fetching data: {str(e)}",
+#             "data": []
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+from collections import defaultdict
+from django.db.models import Sum
+from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+import traceback
+
+from collections import defaultdict
+from django.db.models import Q, Sum
+from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+import traceback
+
 @api_view(['GET'])
 def get_grn_data(request, grn_id=None):
-    """
-    GET API to fetch GRN data for the table
-    """
     try:
+        search_query = request.GET.get('q', '').strip()
+
+        # Fetch GRN items and GST data
         if grn_id:
-            # Fetch specific GRN record
             grn_detail = get_object_or_404(GrnGenralDetail, id=grn_id)
             grn_items = NewGrnList.objects.filter(New_MRN_Detail=grn_detail)
             grn_gst = GrnGst.objects.filter(New_MRN_Detail=grn_detail)
-            grn_tdc = GrnGstTDC.objects.filter(New_MRN_Detail=grn_detail).first()
         else:
-            # Fetch all GRN records
             grn_items = NewGrnList.objects.all()
             grn_gst = GrnGst.objects.all()
-        
-        # Prepare response data
-        response_data = []
-        
+
+        # Apply search filter
+        if search_query:
+            grn_items = grn_items.filter(
+                Q(ItemNoCode__icontains=search_query) |
+                Q(Description__icontains=search_query)
+            )
+
+        # Initialize grouped data
+        grouped_data = defaultdict(lambda: {
+            "sr_no": None,
+            "item_code": "",
+            "description": "",
+            "size": "",
+            "group_name": "",
+            "unit_code": "",
+            "item_type": "",
+            "po_rate_qty": "",
+            "rate": "",
+            "qc_stock": "",
+            "f4_stock": "",
+            "stock": 0,
+            "shop_floor": '',
+            "amount": 0,
+            "po_no": "",
+            "date": "",
+            "mfg_date": "",
+            "hsn": "",
+            "po_rate": "",
+            "discount_rate": "",
+            "cgst": "",
+            "sgst": "",
+            "igst": "",
+            "variants": []
+        })
+
         for index, item in enumerate(grn_items, 1):
-            # Find corresponding GST data for this item
+            # Safe fetch of GST & Item data
             gst_data = grn_gst.filter(ItemCode=item.ItemNoCode).first() if grn_gst else None
-            
-            # Calculate amount (Rate * GrnQty)
+            item_master = ItemTable.objects.filter(Part_Code=item.ItemNoCode).first()
+
+            # Calculate amount
             try:
                 rate = float(item.Rate) if item.Rate else 0
                 qty = float(item.GrnQty) if item.GrnQty else 0
                 amount = rate * qty
             except (ValueError, TypeError):
                 amount = 0
+
+            # QC stock or normal stock
+            qc_stock_value, stock_value = "", 0
+            if item_master and getattr(item_master, "QC_Application", "").lower() == "yes":
+                qc_stock_value = item.GrnQty or ""
+            else:
+                stock_value = float(item.GrnQty or 0)
+
+            # Shop floor value from MaterialChallanTable
+            # shop_floor_value = ""
+            # material_challan = MaterialChallan.objects.filter(Item=item.ItemNoCode).first()
+            # if material_challan:
+            #     challan_table = MaterialChallanTable.objects.filter(
+            #         MaterialChallanDetail=material_challan
+            #     ).first()
+            #     if challan_table:
+            #         shop_floor_value = challan_table.Qty or ""
+
+             
+            if item.ItemNoCode:
+                shop_floor_value = (
+                    MaterialChallanTable.objects.filter(
+                    MaterialChallanDetail__Item__startswith=item.ItemNoCode
+                         ).aggregate(total_qty=Sum('Qty'))['total_qty'] or 0
+                    )
+            else:
+                 shop_floor_value = 0
             
-            item_data = {
-                'sr_no': index,
-                'item_code': item.ItemNoCode or '',
-                'description': item.Description or '',
-                'size': '',  # Not available in current models
-                'group_name': '',  # Not available in current models
-                'unit_code': item.UnitCode or '',
-                'item_type': '',  # Not available in current models
-                'po_rate_qty': item.PoQty or '',
-                'qc_stock': '',  # Not available in current models
-                'f4_stock': '',  # Not available in current models
-                'shop_floor': '',  # Not available in current models
-                'stock': item.BalQty or '',
-                'heat_no': item.HeatNo or '',
-                'rate': item.Rate or '',
-                'amount': amount,
-                # Additional fields that might be useful
-                'grn_qty': item.GrnQty or '',
-                'challan_qty': item.ChalQty or '',
-                'short_excess_qty': item.ShortExcessQty or '',
-                'po_no': item.PoNo or '',
-                'date': item.Date or '',
-                'mfg_date': item.MfgDate or '',
-                # GST related data if available
-                'hsn': gst_data.HSN if gst_data else '',
-                'po_rate': gst_data.PoRate if gst_data else '',
-                'discount_rate': gst_data.DiscRate if gst_data else '',
-                'cgst': gst_data.CGST if gst_data else '',
-                'sgst': gst_data.SGST if gst_data else '',
-                'igst': gst_data.IGST if gst_data else '',
-            }
-            response_data.append(item_data)
-        
+            # Get group for current item
+            group = grouped_data[item.ItemNoCode]
+
+            # Initialize group if first occurrence
+            if not group["sr_no"]:
+                group.update({
+                    "sr_no": index,
+                    "item_code": item.ItemNoCode or '',
+                    "description": item.Description or '',
+                    "unit_code": item.UnitCode or '',
+                    "po_rate_qty": item.PoQty or '',
+                    "rate": item.Rate or '',
+                    "qc_stock": qc_stock_value,
+                    "f4_stock": "",
+                    "stock": 0,
+                    "shop_floor": shop_floor_value,
+                    "amount": amount,
+                    "po_no": item.PoNo or '',
+                    "date": item.Date or '',
+                    "mfg_date": item.MfgDate or '',
+                    "hsn": getattr(gst_data, "HSN", ""),
+                    "po_rate": getattr(gst_data, "PoRate", ""),
+                    "discount_rate": getattr(gst_data, "DiscRate", ""),
+                    "cgst": getattr(gst_data, "CGST", ""),
+                    "sgst": getattr(gst_data, "SGST", ""),
+                    "igst": getattr(gst_data, "IGST", ""),
+                })
+
+            # Update total stock
+            group["stock"] += stock_value
+
+            # ✅ F4 Stock Calculation
+            onward_total = 0
+            inward_total_kg = 0
+            if item.ItemNoCode:
+                # 1️⃣ Total qty from Onward Challan
+                onward_total = (
+                    OnwardChallanItem.objects
+                    .filter(item_code__icontains=item.ItemNoCode)
+                    .aggregate(total_qty=Sum('qtyNo'))['total_qty'] or 0
+                )
+
+                # 2️⃣ Total InQtyKg from Inward Challan
+                inward_total_kg = (
+                    InwardChallanTable.objects
+                    .filter(ItemDescription__icontains=item.ItemNoCode)
+                    .aggregate(total_in_qty_kg=Sum('InQtyKg'))['total_in_qty_kg'] or 0
+                )
+
+                # 3️⃣ Subtract inward qty from onward qty
+                final_f4_stock = float(onward_total) - float(inward_total_kg)
+            else:
+                final_f4_stock = group["stock"]
+
+            group["f4_stock"] = format(final_f4_stock, '.2f')
+
+            # Append variant details
+            group["variants"].append({
+                "heat_no": item.HeatNo or '',
+                "stock": str(stock_value),
+                "grn_qty": item.GrnQty or '',
+                "challan_qty": item.ChalQty or '',
+                "short_excess_qty": item.ShortExcessQty or '',
+            })
+
+        # Prepare final list
+        response_data = list(grouped_data.values())
+
         return Response({
-            'success': True,
-            'message': 'Data fetched successfully',
-            'data': response_data,
-            'total_records': len(response_data)
+            "success": True,
+            "message": "Data fetched successfully",
+            "data": response_data,
+            "total_records": len(response_data)
         }, status=status.HTTP_200_OK)
-        
+
+    except Exception as e:
+        print("❌ ERROR in get_grn_data:", e)
+        traceback.print_exc()
+
+        return Response({
+            "success": False,
+            "message": f"Error fetching data: {str(e)}",
+            "data": []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
+
+
+# @api_view(['GET'])
+# def get_item_variants(request):
+#     try:
+#         item_code = request.query_params.get("item_code")
+
+#         if not item_code:
+#             return Response({
+#                 "success": False,
+#                 "message": "query param is required",
+#                 "data": []
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Example: "RMRM1001 - 123456 - 18.05 Dai E1MA"
+#         try:
+#             parts = [p.strip() for p in item_code.split("-")]
+
+#             item_code = parts[0]      #  RMRM1001
+#             # heat_no = parts[1]      #  ignore heat filter
+#             description = parts[2]    #  18.05 Dai E1MA
+#         except Exception:
+#             return Response({
+#                 "success": False,
+#                 "message": "Invalid query format",
+#                 "data": []
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+#         # filter only by item_code + description (ignore heat_no)
+#         grn_items = NewGrnList.objects.filter(
+#             ItemNoCode=item_code,
+#             Description=description
+#         )
+
+#         if not grn_items.exists():
+#             return Response({
+#                 "success": True,
+#                 "message": "No items found with given filters",
+#                 "data": []
+#             }, status=status.HTTP_200_OK)
+
+#         response_data = []
+#         for item in grn_items:
+#             qc_stock, stock = "", ""
+
+#             #  check QC flag
+#             item_master = ItemTable.objects.filter(Part_Code=item.ItemNoCode).first()
+#             if item_master and item_master.QC_Application and item_master.QC_Application.lower() == "yes":
+#                 qc_stock = item.GrnQty or ""
+#             else:
+#                 stock = item.GrnQty or ""
+
+#             response_data.append({
+#                 "heat_no": item.HeatNo or "",  
+#                 "stock": stock,
+#                 "qc_stock": qc_stock,
+#             })
+
+#         return Response({
+#             "success": True,
+#             "message": "Variants fetched successfully",
+#             "data": response_data,
+#             "total_records": len(response_data)
+#         }, status=status.HTTP_200_OK)
+
+#     except Exception as e:
+#         return Response({
+#             "success": False,
+#             "message": f"Error fetching variants: {str(e)}",
+#             "data": []
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_item_variants(request):
+    try:
+        item_code = request.query_params.get("item_code")
+
+        if not item_code:
+            return Response({
+                "success": False,
+                "message": "query param is required",
+                "data": []
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Clean and split safely
+        parts = [p.strip() for p in item_code.split("-") if p.strip()]
+
+        if len(parts) < 2:
+            return Response({
+                "success": False,
+                "message": "Invalid query format. Expected at least item_code and description.",
+                "data": []
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Handle both 2-part and 3-part inputs
+        if len(parts) == 2:
+            item_code = parts[0]           # RMRM1001
+            description = parts[1]         # 18.05 Dai E1MA
+        elif len(parts) >= 3:
+            item_code = parts[0]           # RMRM1001
+            description = parts[2]         # 18.05 Dai E1MA (ignore middle heat_no)
+
+        # filter only by item_code + description (ignore heat_no)
+        grn_items = NewGrnList.objects.filter(
+            ItemNoCode=item_code,
+            Description__icontains=description  # allow partial match
+        )
+
+        if not grn_items.exists():
+            return Response({
+                "success": True,
+                "message": "No items found with given filters",
+                "data": []
+            }, status=status.HTTP_200_OK)
+
+        response_data = []
+        for item in grn_items:
+            qc_stock, stock = "", ""
+
+            # check QC flag
+            item_master = ItemTable.objects.filter(Part_Code=item.ItemNoCode).first()
+            if item_master and item_master.QC_Application and item_master.QC_Application.lower() == "yes":
+                qc_stock = item.GrnQty or ""
+            else:
+                stock = item.GrnQty or ""
+
+            response_data.append({
+                "heat_no": item.HeatNo or "",
+                "stock": stock,
+                "qc_stock": qc_stock,
+            })
+
+        return Response({
+            "success": True,
+            "message": "Variants fetched successfully",
+            "data": response_data,
+            "total_records": len(response_data)
+        }, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({
-            'success': False,
-            'message': f'Error fetching data: {str(e)}',
-            'data': []
+            "success": False,
+            "message": f"Error fetching variants: {str(e)}",
+            "data": []
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 @api_view(['GET'])
@@ -1922,14 +2373,175 @@ def get_grn_summary(request, grn_id):
 
 #wip stock report
 from django.db.models import Q
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from collections import defaultdict
+from datetime import datetime
+import re
 from All_Masters.models import ItemTable
+import re
+from datetime import datetime
+from collections import defaultdict
+from django.db.models import Q
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+
+
+
+    
+import re
+from datetime import datetime
+from collections import defaultdict
+from django.db.models import Q
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+
+from collections import defaultdict
+from datetime import datetime
+import re
+from django.db.models import Q
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
 class WIPStockreport(APIView):
+
+    def get_vendor_balance_from_stock(self, part_code):
+        try:
+            combined_data = []
+            inward_data = []
+
+            def extract_number(value):
+                match = re.search(r"[\d.]+", str(value))
+                return float(match.group()) if match else 0
+
+            # ================= Inward Challans =================
+            inward_queryset = InwardChallan2.objects.all()
+
+            for inward in inward_queryset:
+                inward_items = []
+                for inv_item in inward.InwardChallanTable.all():
+
+                    item_dict = {
+                        "ItemDescription": inv_item.ItemDescription,
+                        "ChallanQty": float(extract_number(inv_item.ChallanQty)),
+                        "InQtyKg": float(extract_number(getattr(inv_item, "InQtyKg", 0))),
+                        "ItemCode": None
+                    }
+
+                    # pull item code from related GST details
+                    gst_detail = getattr(inv_item, "InwardChallanGSTDetails", None)
+                    if gst_detail and getattr(gst_detail, "ItemCode", None):
+                        item_dict["ItemCode"] = gst_detail.ItemCode
+
+                    inward_items.append(item_dict)
+
+                inward_record = {
+                    "id": inward.id,
+                    "SupplierName": inward.SupplierName,
+                    "ChallanNo": inward.ChallanNo,
+                    "ChallanDate": getattr(inward, "InwardDate", None),
+                    "items": inward_items
+                }
+                inward_data.append(inward_record)
+
+            # ================= Outward Challans =================
+            outward_queryset = onwardchallan.objects.all().order_by("challan_date")
+
+            # ================= Stock Calculation =================
+            last_balance = defaultdict(float)
+            grouped_by_date = defaultdict(lambda: defaultdict(lambda: {
+                "opening_qty": 0,
+                "inward_qty": 0,
+                "inward_qty_kg": 0,
+                "outward_qty": 0,
+                "closing_qty": 0,
+                "description": ""
+            }))
+
+            # ---- Process inward challans ----
+            for inward in inward_data:
+                challan_date = inward["ChallanDate"]
+
+                if isinstance(challan_date, str):
+                    try:
+                        challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+                    except Exception:
+                        challan_date = None
+
+                supplier_name = inward["SupplierName"]
+                for item in inward["items"]:
+                    code_key = item["ItemCode"] or item["ItemDescription"].strip().lower()
+                    qty = item["ChallanQty"]
+                    inqty_kg = item.get("InQtyKg", 0)
+
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty"] += qty
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty_kg"] += inqty_kg
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["ItemDescription"]
+
+            # ---- Process outward challans ----
+            for outward in outward_queryset:
+                challan_date = outward.challan_date
+
+                if isinstance(challan_date, str):
+                    try:
+                        challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+                    except Exception:
+                        challan_date = None
+
+                supplier_name = outward.vender
+                outward_items = list(
+                    outward.items.all().values("description", "qtyNo", "qtyKg", "type", "item_code")
+                )
+                for item in outward_items:
+                    code_key = item["item_code"] or item["description"].strip().lower()
+                    qty_value = item.get("qtyKg")
+                    if not qty_value:
+                        qty_value = item.get("qtyNo", 0)
+                    qty = extract_number(qty_value)
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["outward_qty"] += qty
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["description"]
+
+            # ================= Find balance for specific part_code =================
+            part_balance = 0
+            clean_part = str(part_code).strip().upper()
+
+            for (date_val, supplier_name), items_dict in sorted(
+                grouped_by_date.items(),
+                key=lambda x: (x[0][0] or datetime.min.date())
+            ):
+                for code_key, qtys in items_dict.items():
+                    code_key_str = str(code_key).upper()
+                    description = str(qtys.get("description", "")).upper()
+
+                    # Match by ItemCode or Description case-insensitively
+                    if clean_part in code_key_str or clean_part in description:
+                        op_qty = last_balance[code_key]
+                        in_qty_kg = qtys["inward_qty_kg"]
+                        out_qty = qtys["outward_qty"]
+                        # closing = opening + inward - outward
+                        closing_qty = op_qty + in_qty_kg - out_qty
+
+                        last_balance[code_key] = closing_qty
+                        part_balance = closing_qty  # latest balance
+
+            return round(part_balance, 2)
+
+        except Exception as e:
+            print(f"Error getting vendor balance: {e}")
+            return 0
+
+    # ========================================================================
     def get(self, request):
         query = request.query_params.get('q', '').strip()
         if not query:
             return Response({'error': 'Search query "q" is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Filter ItemTable with any match of part_code, part_no or name_description
+        # Filter ItemTable using part_code, part_no, or name_description
         items = ItemTable.objects.filter(
             Q(Part_Code__icontains=query) |
             Q(part_no__icontains=query) |
@@ -1938,6 +2550,1329 @@ class WIPStockreport(APIView):
         if not items.exists():
             return Response({'error': 'No items found matching your query'}, status=status.HTTP_404_NOT_FOUND)
 
-        bom_items = BOMItem.objects.filter(item__in=items)
-        serializer = WipSerializer(bom_items, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK) 
+        response_data = []
+
+        # Totals initialize (these will be recalculated after merge)
+        total_rework_qty = total_reject_qty = total_prod_qty = total_pending_qc = total_subcon = total_total = 0
+
+        for item in items:
+            bom_items = BOMItem.objects.filter(item=item)
+
+            for bom in bom_items:
+                if not bom.PartCode or not bom.OPNo:
+                    continue
+
+                production_entries = ProductionEntry.objects.filter(
+                    item__icontains=item.Part_Code,
+                    operation__icontains=bom.OPNo
+                )
+
+                # Get vendor balance using BOM PartCode (raw material)
+                subcon_balance = self.get_vendor_balance_from_stock(bom.PartCode)
+
+                if not production_entries.exists():
+                    subcon_balance = float(subcon_balance or 0)
+                    wip_wt = float(bom.WipWt or 0)
+                    total = subcon_balance
+                    totalwt = total * wip_wt
+
+                    response_data.append({
+                        "part_code": item.Part_Code,
+                        "part_no": item.part_no,
+                        "Name_Description": item.Name_Description,
+                        "OPNo": bom.OPNo,
+                        "Operation": bom.Operation,
+                        "PartCode": bom.PartCode,
+                        "rework_qty": 0,
+                        "reject_qty": 0,
+                        "prod_qty": 0,
+                        "Total": total,
+                        "WipWt": wip_wt,
+                        "WipRate": float(bom.WipRate or 0),
+                        "pending_qc": 0,
+                        "subcon": subcon_balance,
+                        "totalwt": totalwt
+                    })
+                else:
+                    subcon_added_to_total = False
+                    for prod in production_entries:
+                        pending_qc = 0 if getattr(bom, "QC", "").lower() in ["no", "n"] else float(prod.prod_qty or 0)
+                        rework = float(prod.rework_qty or 0)
+                        reject = float(prod.reject_qty or 0)
+                        prod_qty = float(prod.prod_qty or 0)
+                        subcon_balance = float(subcon_balance or 0)
+
+                        total = rework + reject + prod_qty + pending_qc + subcon_balance
+                        wip_wt = float(bom.WipWt or 0)
+                        totalwt = total * wip_wt
+
+                        response_data.append({
+                            "part_code": item.Part_Code,
+                            "part_no": item.part_no,
+                            "Name_Description": item.Name_Description,
+                            "OPNo": bom.OPNo,
+                            "Operation": bom.Operation,
+                            "PartCode": bom.PartCode,
+                            "rework_qty": rework,
+                            "reject_qty": reject,
+                            "prod_qty": prod_qty,
+                            "Total": total,
+                            "WipWt": wip_wt,
+                            "WipRate": float(bom.WipRate),
+                            "pending_qc": pending_qc,
+                            "subcon": subcon_balance,
+                            "totalwt": totalwt
+                        })
+
+                        # (original incremental totals kept but we'll recalc below to ensure correctness)
+                        total_rework_qty += rework
+                        total_reject_qty += reject
+                        total_prod_qty += prod_qty
+                        total_pending_qc += pending_qc
+                        total_total += total
+
+                        if not subcon_added_to_total:
+                            total_subcon += subcon_balance
+                            subcon_added_to_total = True
+
+        if not response_data:
+            return Response({'message': 'No matching BOM or production entries found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # ==========================================
+        # 🔥 MERGE DUPLICATE OPNo ROWS
+        # ==========================================
+        merged = {}
+
+        for row in response_data:
+            key = (
+                row["part_code"],
+                row["part_no"],
+                row["Name_Description"],
+                row["OPNo"],
+                row["PartCode"]
+            )
+
+            if key not in merged:
+                # ensure numeric fields are numbers (not None)
+                merged[key] = {
+                    **row,
+                    "rework_qty": float(row.get("rework_qty") or 0),
+                    "reject_qty": float(row.get("reject_qty") or 0),
+                    "prod_qty": float(row.get("prod_qty") or 0),
+                    "pending_qc": float(row.get("pending_qc") or 0),
+                    "subcon": float(row.get("subcon") or 0),
+                    "Total": float(row.get("Total") or 0),
+                    "WipWt": float(row.get("WipWt") or 0),
+                    "totalwt": float(row.get("totalwt") or 0),
+                }
+            else:
+                # Existing row → Add qty fields
+                merged[key]["rework_qty"] = (merged[key]["rework_qty"] or 0) + (row.get("rework_qty") or 0)
+                merged[key]["reject_qty"] = (merged[key]["reject_qty"] or 0) + (row.get("reject_qty") or 0)
+                merged[key]["prod_qty"] = (merged[key]["prod_qty"] or 0) + (row.get("prod_qty") or 0)
+                merged[key]["pending_qc"] = (merged[key]["pending_qc"] or 0) + (row.get("pending_qc") or 0)
+
+                # subcon should remain the same (do not add again)
+                # Recalculate Total
+                merged[key]["Total"] = (
+                    (merged[key]["rework_qty"] or 0)
+                    + (merged[key]["reject_qty"] or 0)
+                    + (merged[key]["prod_qty"] or 0)
+                    + (merged[key]["pending_qc"] or 0)
+                    + (merged[key]["subcon"] or 0)
+                )
+
+                # Recalculate totalwt
+                merged[key]["totalwt"] = merged[key]["Total"] * float(merged[key].get("WipWt") or 0)
+
+        # Replace response data with merged rows
+        response_data = list(merged.values())
+
+        # ================================================
+        # 🔥 RECALCULATE TOTAL SUMMARY AFTER MERGE
+        # ================================================
+        # reset totals and recompute from merged data to ensure correctness
+        total_rework_qty = total_reject_qty = total_prod_qty = total_pending_qc = total_subcon = total_total = 0
+
+        for row in response_data:
+            total_rework_qty += row.get("rework_qty") or 0
+            total_reject_qty += row.get("reject_qty") or 0
+            total_prod_qty += row.get("prod_qty") or 0
+            total_pending_qc += row.get("pending_qc") or 0
+            total_total += row.get("Total") or 0
+
+            # subcon add once per merged OP row
+            total_subcon += row.get("subcon") or 0
+
+        # =====================================================
+        # 🔥 FINAL RESPONSE
+        # =====================================================
+        return Response({
+            "totals": {
+                "total_rework": total_rework_qty,
+                "total_reject": total_reject_qty,
+                "total_prod": total_prod_qty,
+                "total_pending_qc": total_pending_qc,
+                "total_subcon": total_subcon,
+                "total_total": total_total
+            },
+            "data": response_data
+        }, status=status.HTTP_200_OK)
+
+
+
+
+"""
+# this is final with out add opno
+class WIPStockreport(APIView): 
+
+    def get_vendor_balance_from_stock(self, part_code):
+        try:
+            combined_data = []
+            inward_data = []
+
+            def extract_number(value):
+                match = re.search(r"[\d.]+", str(value))
+                return float(match.group()) if match else 0
+
+            # ================= Inward Challans =================
+            inward_queryset = InwardChallan2.objects.all()
+
+            for inward in inward_queryset:
+                inward_items = []
+                for inv_item in inward.InwardChallanTable.all():
+
+                    item_dict = {
+                        "ItemDescription": inv_item.ItemDescription,  
+                        "ChallanQty": float(extract_number(inv_item.ChallanQty)),
+                        "InQtyKg": float(extract_number(getattr(inv_item, "InQtyKg", 0))), 
+                        "ItemCode": None
+                    }
+
+                    # pull item code from related GST details
+                    gst_detail = getattr(inv_item, "InwardChallanGSTDetails", None)
+                    if gst_detail and getattr(gst_detail, "ItemCode", None):
+                        item_dict["ItemCode"] = gst_detail.ItemCode
+
+                    inward_items.append(item_dict)
+
+                inward_record = {
+                    "id": inward.id,
+                    "SupplierName": inward.SupplierName,
+                    "ChallanNo": inward.ChallanNo,
+                    "ChallanDate": getattr(inward, "InwardDate", None),
+                    "items": inward_items
+                }
+                inward_data.append(inward_record)
+
+            # ================= Outward Challans =================
+            outward_queryset = onwardchallan.objects.all().order_by("challan_date")
+
+            # ================= Stock Calculation =================
+            last_balance = defaultdict(float)
+            grouped_by_date = defaultdict(lambda: defaultdict(lambda: {
+                "opening_qty": 0,
+                "inward_qty": 0,
+                "inward_qty_kg": 0,
+                "outward_qty": 0,
+                "closing_qty": 0,
+                "description": ""
+            }))
+
+            # ---- Process inward challans ----
+            for inward in inward_data:
+                challan_date = inward["ChallanDate"]
+
+                if isinstance(challan_date, str):
+                    try:
+                        challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+                    except Exception:
+                        challan_date = None
+
+                supplier_name = inward["SupplierName"]
+                for item in inward["items"]:
+                    code_key = item["ItemCode"] or item["ItemDescription"].strip().lower()
+                    qty = item["ChallanQty"]
+                    inqty_kg = item.get("InQtyKg", 0)
+
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty"] += qty
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty_kg"] += inqty_kg
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["ItemDescription"]
+
+            # ---- Process outward challans ----
+            for outward in outward_queryset:
+                challan_date = outward.challan_date
+
+                if isinstance(challan_date, str):
+                    try:
+                        challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+                    except Exception:
+                        challan_date = None
+
+                supplier_name = outward.vender
+                outward_items = list(
+                    outward.items.all().values("description", "qtyNo", "qtyKg", "type", "item_code")
+                )
+                for item in outward_items:
+                    code_key = item["item_code"] or item["description"].strip().lower()
+                    qty_value = item.get("qtyKg")
+                    if not qty_value:
+                        qty_value = item.get("qtyNo", 0)
+                    qty = extract_number(qty_value)
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["outward_qty"] += qty
+                    grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["description"]
+
+            # ================= Find balance for specific part_code =================
+            part_balance = 0
+            clean_part = str(part_code).strip().upper()
+
+            for (date_val, supplier_name), items_dict in sorted(
+                grouped_by_date.items(),
+                key=lambda x: (x[0][0] or datetime.min.date())
+            ):
+                for code_key, qtys in items_dict.items():
+                    code_key_str = str(code_key).upper()
+                    description = str(qtys.get("description", "")).upper()
+
+                    # ✅ Match by ItemCode or Description case-insensitively
+                    if clean_part in code_key_str or clean_part in description:
+                        op_qty = last_balance[code_key]
+                        in_qty_kg = qtys["inward_qty_kg"]
+                        out_qty = qtys["outward_qty"]
+                        print(out_qty ,"out")
+                        print("inward",in_qty_kg)
+                        # ✅ Fixed logic: closing = opening + inward - outward
+                        closing_qty = op_qty + in_qty_kg - out_qty
+
+                        last_balance[code_key] = closing_qty
+                        part_balance = closing_qty  # latest balance
+
+            return round(part_balance, 2)
+
+        except Exception as e:
+            print(f"Error getting vendor balance: {e}")
+            return 0
+
+    # ========================================================================
+    def get(self, request):
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response({'error': 'Search query "q" is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Filter ItemTable using part_code, part_no, or name_description
+        items = ItemTable.objects.filter(
+            Q(Part_Code__icontains=query) |
+            Q(part_no__icontains=query) |
+            Q(Name_Description__icontains=query)
+        )
+        if not items.exists():
+            return Response({'error': 'No items found matching your query'}, status=status.HTTP_404_NOT_FOUND)
+
+        response_data = []
+
+        # Totals initialize
+        total_rework_qty = total_reject_qty = total_prod_qty = total_pending_qc = total_subcon = total_total = 0
+
+        for item in items:
+            bom_items = BOMItem.objects.filter(item=item)
+
+            for bom in bom_items:
+                if not bom.PartCode or not bom.OPNo:
+                    continue
+
+                production_entries = ProductionEntry.objects.filter(
+                    item__icontains=item.Part_Code,
+                    operation__icontains=bom.OPNo
+                )
+
+                # ✅ Get vendor balance using BOM PartCode (raw material)
+                subcon_balance = self.get_vendor_balance_from_stock(bom.PartCode)
+
+                if not production_entries.exists():
+                    subcon_balance = float(subcon_balance or 0)
+                    wip_wt = float(bom.WipWt or 0)
+                    total = subcon_balance
+                    totalwt = total * wip_wt
+
+                    response_data.append({
+                        "part_code": item.Part_Code,
+                        "part_no": item.part_no,
+                        "Name_Description": item.Name_Description,
+                        "OPNo": bom.OPNo,
+                        "Operation": bom.Operation,
+                        "PartCode": bom.PartCode,
+                        "rework_qty": None,
+                        "reject_qty": None,
+                        "prod_qty": None,
+                        "Total": subcon_balance,
+                        "WipWt": bom.WipWt,
+                        "WipRate": bom.WipRate,
+                        "pending_qc": 0,
+                        "subcon": subcon_balance,
+                        "totalwt": totalwt
+                    })
+                else:
+                    subcon_added_to_total = False
+                    for prod in production_entries:
+                        pending_qc = 0 if getattr(bom, "QC", "").lower() in ["no", "n"] else float(prod.prod_qty or 0)
+                        rework = float(prod.rework_qty or 0)
+                        reject = float(prod.reject_qty or 0)
+                        prod_qty = float(prod.prod_qty or 0)
+                        subcon_balance = float(subcon_balance or 0)
+
+                        total = rework + reject + prod_qty + pending_qc + subcon_balance
+                        wip_wt = float(bom.WipWt or 0)
+                        totalwt = total * wip_wt
+
+                        response_data.append({
+                            "part_code": item.Part_Code,
+                            "part_no": item.part_no,
+                            "Name_Description": item.Name_Description,
+                            "OPNo": bom.OPNo,
+                            "Operation": bom.Operation,
+                            "PartCode": bom.PartCode,
+                            "rework_qty": rework,
+                            "reject_qty": reject,
+                            "prod_qty": prod_qty,
+                            "Total": total,
+                            "WipWt": wip_wt,
+                            "WipRate": float(bom.WipRate),
+                            "pending_qc": pending_qc,
+                            "subcon": subcon_balance,
+                            "totalwt": totalwt
+                        })
+
+                        # Update totals
+                        total_rework_qty += rework
+                        total_reject_qty += reject
+                        total_prod_qty += prod_qty
+                        total_pending_qc += pending_qc
+                        total_total += total
+
+                        if not subcon_added_to_total:
+                            total_subcon += subcon_balance
+                            subcon_added_to_total = True
+
+        if not response_data:
+            return Response({'message': 'No matching BOM or production entries found'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "totals": {
+                "total_rework": total_rework_qty,
+                "total_reject": total_reject_qty,
+                "total_prod": total_prod_qty,
+                "total_pending_qc": total_pending_qc,
+                "total_subcon": total_subcon,
+                "total_total": total_total
+            },
+            "data": response_data
+        }, status=status.HTTP_200_OK)
+
+"""
+
+# class WIPStockreport(APIView):    
+#     def get_vendor_balance_from_stock(self, part_code):
+        
+#         try:
+#             combined_data = []
+#             inward_data = []
+
+#             # ================= Inward Challans =================
+#             inward_queryset = InwardChallan2.objects.all()
+
+#             for inward in inward_queryset:
+#                 inward_items = []
+#                 for inv_item in inward.InwardChallanTable.all():
+
+#                     def extract_number(value):
+#                         match = re.search(r"[\d.]+", str(value))
+#                         return float(match.group()) if match else 0
+
+#                     item_dict = {
+#                         "ItemDescription": inv_item.ItemDescription,  
+#                         "ChallanQty": float(extract_number(inv_item.ChallanQty)),
+#                         "InQtyKg": float(extract_number(getattr(inv_item, "InQtyKg", 0))), 
+#                         "ItemCode": None
+#                     }
+#                     # pull item code from related GST details
+#                     gst_detail = getattr(inv_item, "InwardChallanGSTDetails", None)
+#                     if gst_detail and getattr(gst_detail, "ItemCode", None):
+#                         item_dict["ItemCode"] = gst_detail.ItemCode
+#                     inward_items.append(item_dict)
+
+#                 inward_record = {
+#                     "id": inward.id,
+#                     "SupplierName": inward.SupplierName,
+#                     "ChallanNo": inward.ChallanNo,
+#                     "ChallanDate": getattr(inward, "InwardDate", None),
+#                     "items": inward_items
+#                 }
+#                 inward_data.append(inward_record)
+
+#             # ================= Outward Challans =================
+#             outward_queryset = onwardchallan.objects.all().order_by("challan_date")
+
+#             # ================= Stock Calculation =================
+#             last_balance = defaultdict(int)
+#             grouped_by_date = defaultdict(lambda: defaultdict(lambda: {
+#                 "opening_qty": 0,
+#                 "inward_qty": 0,
+#                 "inward_qty_kg": 0,
+#                 "outward_qty": 0,
+#                 "closing_qty": 0,
+#                 "description": ""
+#             }))
+
+#             # ---- Process inward challans ----
+#             for inward in inward_data:
+#                 challan_date = inward["ChallanDate"]
+
+#                 if isinstance(challan_date, str):
+#                     try:
+#                         challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+#                     except Exception:
+#                         challan_date = None
+
+#                 supplier_name = inward["SupplierName"]
+#                 for item in inward["items"]:
+#                     code_key = item["ItemCode"] or item["ItemDescription"].strip().lower()
+#                     qty = item["ChallanQty"]
+#                     inqty_kg = item.get("InQtyKg", 0)  # ✅ Get InQtyKg
+
+#                     grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty"] += qty
+#                     grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty_kg"] += inqty_kg  # ✅ Add InQtyKg
+
+#                     grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["ItemDescription"]
+
+#             # ---- Process outward challans ----
+#             for outward in outward_queryset:
+#                 challan_date = outward.challan_date
+
+#                 if isinstance(challan_date, str):
+#                     try:
+#                         challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+#                     except Exception:
+#                         challan_date = None
+
+#                 supplier_name = outward.vender
+#                 outward_items = list(
+#                     outward.items.all().values("description", "qtyNo", "type", "item_code")
+#                 )
+#                 for item in outward_items:
+#                     code_key = item["item_code"] or item["description"].strip().lower()
+#                     qty = float(item["qtyNo"] or 0)
+#                     grouped_by_date[(challan_date, supplier_name)][code_key]["outward_qty"] += qty
+#                     grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["description"]
+
+#             # ================= Find balance for specific part_code =================
+#             part_balance = 0
+            
+#             for (date_val, supplier_name), items_dict in sorted(
+#                 grouped_by_date.items(),
+#                 key=lambda x: (x[0][0] or datetime.min.date())
+#             ):
+#                 for code_key, qtys in items_dict.items():
+#                     # Check if this item matches our part_code
+#                     item_code = code_key if isinstance(code_key, str) and code_key != code_key.lower() else None
+#                     description = qtys.get("description", "")
+                    
+#                     # Match by ItemCode or Description containing part_code
+#                     if (item_code and part_code in str(item_code)) or (part_code in str(description)):
+#                         op_qty = last_balance[code_key]
+#                         in_qty = qtys["inward_qty"]
+#                         in_qty_kg = qtys["inward_qty_kg"]  # ✅ Use InQtyKg instead of inward_qty
+ 
+#                         out_qty = qtys["outward_qty"]
+#                         print(out_qty)
+#                         print(in_qty_kg)
+#                         closing_qty = op_qty - in_qty_kg + out_qty  # Fixed calculation
+                        
+#                         last_balance[code_key] = closing_qty
+#                         part_balance = closing_qty  # Keep updating to get latest balance
+
+#             return part_balance
+
+#         except Exception as e:
+#             print(f"Error getting vendor balance: {e}")
+#             return 0
+
+#     def get(self, request):
+#         query = request.query_params.get('q', '').strip()
+#         if not query:
+#             return Response({'error': 'Search query "q" is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Filter ItemTable using part_code, part_no, or name_description
+#         items = ItemTable.objects.filter(
+#             Q(Part_Code__icontains=query) |
+#             Q(part_no__icontains=query) |
+#             Q(Name_Description__icontains=query)
+#         )
+#         if not items.exists():
+#             return Response({'error': 'No items found matching your query'}, status=status.HTTP_404_NOT_FOUND)
+
+#         response_data = []
+
+#         # Totals initialize
+#         total_rework_qty = 0
+#         total_reject_qty = 0
+#         total_prod_qty = 0
+#         total_pending_qc = 0
+#         total_subcon = 0
+#         total_total =0
+
+#         for item in items:
+#             bom_items = BOMItem.objects.filter(item=item)
+
+#             for bom in bom_items:
+#                 if not bom.PartCode or not bom.OPNo:
+#                     continue
+
+#                 production_entries = ProductionEntry.objects.filter(
+#                     item__icontains=item.Part_Code,
+#                     operation__icontains=bom.OPNo
+#                 )
+
+#                 # Get vendor balance for this part using part_no (matching with VenderStock ItemCode)
+#                 subcon_balance = self.get_vendor_balance_from_stock(item.part_no)
+
+#                 if not production_entries.exists():
+#                     subcon_balance = int(subcon_balance or 0)
+#                     wip_wt = float(bom.WipWt or 0)
+#                     total = subcon_balance
+#                     totalwt = total * wip_wt
+
+#                     response_data.append({
+#                         "part_code": item.Part_Code,
+#                         "part_no": item.part_no,
+#                         "Name_Description": item.Name_Description,
+#                         "OPNo": bom.OPNo,
+#                         "Operation": bom.Operation,
+#                         "PartCode": bom.PartCode,
+#                         "rework_qty": None,
+#                         "reject_qty": None,
+#                         "prod_qty": None,
+#                         "Total": subcon_balance,  
+#                         "WipWt": bom.WipWt,
+#                         "WipRate": bom.WipRate,
+#                         "pending_qc": 0,
+#                         "subcon": subcon_balance,
+#                         "totalwt": totalwt
+#                     })
+#                 else:
+#                     # Add subcon_balance to total only once per BOM item, not per production entry
+#                     subcon_added_to_total = False
+                    
+#                     for prod in production_entries:
+#                         # pending QC logic
+#                         if getattr(bom, "QC", "").lower() in ["no", "n"]:
+#                             pending_qc = 0
+#                         else:
+#                             pending_qc = float(prod.prod_qty or 0)
+
+#                         rework = float(prod.rework_qty or 0)
+#                         reject = float(prod.reject_qty or 0)
+#                         prod_qty = float(prod.prod_qty or 0)
+#                         subcon_balance = float(subcon_balance or 0)
+                                                
+#                         total = rework + reject + prod_qty + pending_qc + subcon_balance
+#                         wip_wt = float(bom.WipWt or 0)  
+
+#                         totalwt = total * wip_wt
+
+                        
+#                         # Add row
+#                         response_data.append({
+#                             "part_code": item.Part_Code,
+#                             "part_no": item.part_no,
+#                             "Name_Description": item.Name_Description,
+#                             "OPNo": bom.OPNo,
+#                             "Operation": bom.Operation,
+#                             "PartCode": bom.PartCode,
+#                             "rework_qty": rework,
+#                             "reject_qty": reject,
+#                             "prod_qty": prod_qty,
+#                             "Total": float(total),
+#                             "WipWt": float(wip_wt),
+#                             "WipRate": float(bom.WipRate),
+#                             "pending_qc": float(pending_qc),
+#                             "subcon": float(subcon_balance),
+#                             "totalwt": totalwt
+#                         })
+
+#                         # Update totals
+#                         total_rework_qty += rework
+#                         total_reject_qty += reject
+#                         total_prod_qty += prod_qty
+#                         total_pending_qc += pending_qc
+#                         total_total += total
+                        
+#                         # Add subcon_balance to grand total only once per BOM item
+#                         if not subcon_added_to_total:
+#                             total_subcon += subcon_balance
+#                             subcon_added_to_total = True
+
+#         if not response_data:
+#             return Response({'message': 'No matching BOM or production entries found'}, status=status.HTTP_404_NOT_FOUND)
+
+#         return Response({
+#             "totals": {
+#                 "total_rework": total_rework_qty,
+#                 "total_reject": total_reject_qty,
+#                 "total_prod": total_prod_qty,
+#                 "total_pending_qc": total_pending_qc,
+#                 "total_subcon": total_subcon,
+#                 "total_total": total_total
+#             },
+#             "data": response_data
+#         }, status=status.HTTP_200_OK)
+
+
+
+
+
+
+
+from Sales.models import onwardchallan
+
+# class SubcornStock(APIView):
+#     def get(self, request):
+#         supplier = request.query_params.get("q")  # ?q=TATA
+#         if not supplier:
+#             return Response({"error": "Supplier name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # ✅ Inward Challans
+#         inward_queryset = InwardChallan2.objects.filter(SupplierName=supplier)
+#         inward_data = []
+#         for inward in inward_queryset:
+#             inward_data.append({
+#                 "id": inward.id,
+#                 "SupplierName": inward.SupplierName,
+#                 "ChallanNo": inward.ChallanNo,
+#                 # Here you join related tables (assuming you have FKs, else you adapt):
+#                 "InwardChallanTable": getattr(inward, "inwardchallantable_set", []).all().values(
+#                     "OutNo", "OutDate", "ItemDescription", "OutQty","ChallanQty",
+#                 ) if hasattr(inward, "inwardchallantable_set") else [],
+#                   })
+
+#         # ✅ Outward Challans
+#         outward_queryset = onwardchallan.objects.filter(vender=supplier)
+#         outward_data = []
+#         for outward in outward_queryset:
+#             outward_data.append({
+#                 "challan_no": outward.challan_no,
+#                 "vendor": outward.vender,
+#                 "items": list(outward.items.all().values("item_code", "type", "description","qtyNo"))
+#             })
+
+#         return Response({
+#             "supplier": supplier,
+#             "inward_challans": inward_data,
+#             "outward_challans": outward_data
+#         }, status=status.HTTP_200_OK)
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+# old h 
+class SubcornStock(APIView):
+    def get(self, request):
+        supplier = request.query_params.get("q")  # optional ?q=TATA
+                
+        inward_queryset = InwardChallan2.objects.all()
+        if supplier:
+            inward_queryset = inward_queryset.filter(SupplierName=supplier)
+
+        combined_data = []
+        for inward in inward_queryset:
+         combined_data.append({
+        "type": "inward",
+        "id": inward.id,
+        "SupplierName": inward.SupplierName,
+        "ChallanNo": inward.ChallanNo,
+        "InwardChallanTable": inward.InwardChallanTable.all().values(
+            "ItemDescription", "ChallanQty"
+        ),
+    })
+        #  Outward Challans
+        outward_queryset = onwardchallan.objects.all()
+        if supplier:
+            outward_queryset = outward_queryset.filter(vender=supplier)
+
+        for outward in outward_queryset:
+            combined_data.append({
+                "type": "outward",
+                "challan_no": outward.challan_no,
+                "vendor": outward.vender,
+                "items": list(outward.items.all().values("item_code", "type", "description","qtyNo"))
+            })
+
+        return Response(combined_data, status=status.HTTP_200_OK)
+    
+# class SubcornStock(APIView):
+#     """
+#     This API is ONLY for the dropdown suggestions.
+#     It searches for supplier names based on the query 'q' 
+#     and returns a simple list of matching names.
+#     """
+#     def get(self, request):
+#         # 1. Get the search query from React (e.g., "SAHIL")
+#         query = request.query_params.get("q", "").strip()
+
+#         # 2. If the query is empty or too short, return an empty list
+#         if not query or len(query) < 2:
+#             return Response([], status=status.HTTP_200_OK)
+
+#         try:
+#             # 3. Search for suppliers using 'icontains' (case-insensitive contains)
+#             #    Use 'values()' to only get the 'SupplierName'
+#             #    Use 'distinct()' to get unique names (no repeats)
+#             vendors_qs = InwardChallan2.objects.filter(
+#                 SupplierName__icontains=query
+#             ).values('SupplierName').distinct()
+
+#             # 4. Format the data for React.
+#             #    React code expects: [{"supplier": "SAHIL CORPORATION"}]
+#             #    Our query gives:   [{"SupplierName": "SAHIL CORPORATION"}]
+#             #    This loop fixes the format:
+#             results = [{"supplier": item['SupplierName']} for item in vendors_qs]
+
+#             return Response(results, status=status.HTTP_200_OK)
+        
+#         except Exception as e:
+#             # Handle any potential errors
+#             print(f"Error in SubcornStock dropdown API: {e}")
+#             return Response([], status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from collections import defaultdict
+from datetime import datetime
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import InwardChallanGSTDetails,InwardChallanTable
+
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from collections import defaultdict
+from datetime import datetime
+import re
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+#-----Matching Itemcode in inward or outward ----
+# class VenderStock(APIView):
+#     def get(self, request):
+#         supplier = request.query_params.get("q")
+#         start_date = request.query_params.get("start")
+#         end_date = request.query_params.get("end")
+
+#         # Parse dates
+#         start_date_obj = end_date_obj = None
+#         if start_date and end_date:
+#             try:
+#                 start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+#                 end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+#             except ValueError:
+#                 return Response(
+#                     {"error": "Invalid date format. Use YYYY-MM-DD."},
+#                     status=status.HTTP_400_BAD_REQUEST,
+#                 )
+
+#         combined_data = []
+#         inward_data = []
+
+#         # ================= Inward Challans =================
+#         inward_queryset = InwardChallan2.objects.all()
+#         if supplier:
+#             inward_queryset = inward_queryset.filter(SupplierName=supplier)
+#         if start_date_obj and end_date_obj:
+#             inward_queryset = inward_queryset.filter(
+#                 InwardDate__range=[start_date_obj, end_date_obj]
+#             )
+
+#         for inward in inward_queryset:
+#             inward_items = []
+#             for inv_item in inward.InwardChallanTable.all():
+
+#                 def extract_number(value):
+#                     match = re.search(r"[\d.]+", str(value))
+#                     return float(match.group()) if match else 0
+
+#                 # ================= Get GSTDetails ItemCode =================
+#                 gst_details_qs = inward.InwardChallanGSTDetails.filter(
+#                     InwardChallanDetail=inward
+#                 )
+#                 gst_item_code = None
+#                 if gst_details_qs.exists():
+#                     # For simplicity, pick first related GSTDetail
+#                     gst_item_code = gst_details_qs.first().ItemCode
+
+#                 item_dict = {
+#                     "ItemDescription": inv_item.ItemDescription,
+#                     "ChallanQty": int(extract_number(inv_item.ChallanQty)),
+#                     "InQtyKg": float(extract_number(getattr(inv_item, "InQtyKg", 0))),
+#                     "ItemCode": gst_item_code,  #  GSTDetails
+#                 }
+
+#                 inward_items.append(item_dict)
+
+#             inward_data.append({
+#                 "id": inward.id,
+#                 "SupplierName": inward.SupplierName,
+#                 "ChallanNo": inward.ChallanNo,
+#                 "ChallanDate": getattr(inward, "InwardDate", None),
+#                 "items": inward_items
+#             })
+
+#         # ================= Outward Challans =================
+#         outward_queryset = onwardchallan.objects.all()
+#         if supplier:
+#             outward_queryset = outward_queryset.filter(vender=supplier)
+#         if start_date_obj and end_date_obj:
+#             outward_queryset = outward_queryset.filter(
+#                 challan_date__range=[start_date_obj, end_date_obj]
+#             )
+#         outward_queryset = outward_queryset.order_by("challan_date")
+
+#         # ================= Stock Calculation =================
+#         last_balance = defaultdict(int)
+#         grouped_by_date = defaultdict(
+#             lambda: defaultdict(
+#                 lambda: {
+#                     "opening_qty": 0,
+#                     "inward_qty": 0,
+#                     "outward_qty": 0,
+#                     "closing_qty": 0,
+#                     "description": "",
+#                 }
+#             )
+#         )
+
+#         # ---- Process inward challans ----
+#         for inward in inward_data:
+#             challan_date = inward["ChallanDate"]
+#             if isinstance(challan_date, str):
+#                 try:
+#                     challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+#                 except Exception:
+#                     challan_date = None
+#             supplier_name = inward["SupplierName"]
+
+#             for item in inward["items"]:
+#                 code_key = (item["ItemCode"] or item["ItemDescription"]).strip().lower()
+#                 qty = item["ChallanQty"]
+#                 grouped_by_date[(challan_date, supplier_name)][code_key][
+#                     "inward_qty"
+#                 ] += qty
+#                 grouped_by_date[(challan_date, supplier_name)][code_key][
+#                     "description"
+#                 ] = item["ItemDescription"]
+
+#         # ---- Process outward challans ----
+#         for outward in outward_queryset:
+#             challan_date = outward.challan_date
+#             if isinstance(challan_date, str):
+#                 try:
+#                     challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+#                 except Exception:
+#                     challan_date = None
+#             supplier_name = outward.vender
+
+#             outward_items = list(
+#                 outward.items.all().values("description", "qtyNo", "type", "item_code")
+#             )
+#             for item in outward_items:
+#                 raw_code = item.get("item_code")
+#                 #  Use item_code if exists, fallback description
+#                 if not raw_code or raw_code.strip() == "" or raw_code.lower() == "default_item":
+#                     code_key = item.get("description", "").strip().lower()
+#                 else:
+#                     code_key = raw_code.strip().lower()
+
+#                 qty = float(item.get("qtyNo") or 0)
+#                 grouped_by_date[(challan_date, supplier_name)][code_key][
+#                     "outward_qty"
+#                 ] += qty
+#                 grouped_by_date[(challan_date, supplier_name)][code_key][
+#                     "description"
+#                 ] = item.get("description", "")
+
+#         # ================= Prepare final combined_data =================
+#         for (date_val, supplier_name), items_dict in sorted(
+#             grouped_by_date.items(), key=lambda x: (x[0][0] or datetime.min.date())
+#         ):
+#             day_items = []
+#             for code_key, qtys in items_dict.items():
+#                 op_qty = last_balance[code_key]
+#                 in_qty = qtys["inward_qty"]
+#                 out_qty = qtys["outward_qty"]
+#                 closing_qty = op_qty - in_qty + out_qty  # Opening + Inward - Outward
+
+#                 last_balance[code_key] = closing_qty
+
+#                 day_items.append(
+#                     {
+#                         "ItemDescription": qtys.get("description", ""),
+#                         "ItemCode": code_key,
+#                         "op_qty": op_qty,
+#                         "inward_qty": in_qty,
+#                         "outward_qty": out_qty,
+#                         "balance_qty": closing_qty,
+#                     }
+#                 )
+
+#             combined_data.append(
+#                 {
+#                     "date": date_val.isoformat() if date_val else None,
+#                     "supplier": supplier_name,
+#                     "items": day_items,
+#                 }
+#             )
+
+#         return Response(combined_data, status=status.HTTP_200_OK)
+
+
+
+
+class VenderStock(APIView):
+    def get(self, request):
+        supplier = request.query_params.get("q")
+        start_date = request.query_params.get("start")
+        end_date = request.query_params.get("end")
+
+        # Parse dates
+        start_date_obj = end_date_obj = None
+        if start_date and end_date:
+            try:
+                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"error": "Invalid date format. Use YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        combined_data = []
+        inward_data = []
+
+        # ================= Inward Challans =================
+        inward_queryset = InwardChallan2.objects.all()
+        if supplier:
+            inward_queryset = inward_queryset.filter(SupplierName=supplier)
+        if start_date_obj and end_date_obj:
+            inward_queryset = inward_queryset.filter(
+                InwardDate__range=[start_date_obj, end_date_obj]
+            )
+
+        for inward in inward_queryset:
+            inward_items = []
+            for inv_item in inward.InwardChallanTable.all():
+
+                def extract_number(value):
+                    match = re.search(r"[\d.]+", str(value))
+                    return float(match.group()) if match else 0
+
+                # ================= Get GSTDetails ItemCode =================
+                gst_details_qs = inward.InwardChallanGSTDetails.filter(
+                    InwardChallanDetail=inward
+                )
+                gst_item_code = None
+                if gst_details_qs.exists():
+                    gst_item_code = gst_details_qs.first().ItemCode
+
+                # ✅ Include InQtyKg here
+                item_dict = {
+                    "ItemDescription": inv_item.ItemDescription,
+                    "ChallanQty": int(extract_number(inv_item.ChallanQty)),
+                    "InQtyKg": float(extract_number(getattr(inv_item, "InQtyKg", 0))),
+                    "ItemCode": gst_item_code,
+                }
+
+                inward_items.append(item_dict)
+
+            inward_data.append({
+                "id": inward.id,
+                "SupplierName": inward.SupplierName,
+                "ChallanNo": inward.ChallanNo,
+                "ChallanDate": getattr(inward, "InwardDate", None),
+                "items": inward_items
+            })
+
+        # ================= Outward Challans =================
+        outward_queryset = onwardchallan.objects.all()
+        if supplier:
+            outward_queryset = outward_queryset.filter(vender=supplier)
+        if start_date_obj and end_date_obj:
+            outward_queryset = outward_queryset.filter(
+                challan_date__range=[start_date_obj, end_date_obj]
+            )
+        outward_queryset = outward_queryset.order_by("challan_date")
+
+        # ================= Stock Calculation =================
+        last_balance = defaultdict(int)
+        grouped_by_date = defaultdict(
+            lambda: defaultdict(
+                lambda: {
+                    "opening_qty": 0,
+                    "inward_qty": 0,
+                    "inward_qty_kg": 0,  # ✅ added
+                    "outward_qty": 0,
+                    "closing_qty": 0,
+                    "description": "",
+                }
+            )
+        )
+
+        # ---- Process inward challans ----
+        for inward in inward_data:
+            challan_date = inward["ChallanDate"]
+            if isinstance(challan_date, str):
+                try:
+                    challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+                except Exception:
+                    challan_date = None
+            supplier_name = inward["SupplierName"]
+
+            for item in inward["items"]:
+                code_key = (item["ItemCode"] or item["ItemDescription"]).strip().lower()
+                qty = item["ChallanQty"]
+                inqty_kg = item.get("InQtyKg", 0)  # ✅ added
+                grouped_by_date[(challan_date, supplier_name)][code_key][
+                    "inward_qty"
+                ] += qty
+                grouped_by_date[(challan_date, supplier_name)][code_key][
+                    "inward_qty_kg"
+                ] += inqty_kg  # ✅ added
+                grouped_by_date[(challan_date, supplier_name)][code_key][
+                    "description"
+                ] = item["ItemDescription"]
+
+        # ---- Process outward challans ----
+        for outward in outward_queryset:
+            challan_date = outward.challan_date
+            if isinstance(challan_date, str):
+                try:
+                    challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
+                except Exception:
+                    challan_date = None
+            supplier_name = outward.vender
+
+            outward_items = list(
+                outward.items.all().values("description", "qtyNo", "type", "item_code")
+            )
+            for item in outward_items:
+                raw_code = item.get("item_code")
+                if not raw_code or raw_code.strip() == "" or raw_code.lower() == "default_item":
+                    code_key = item.get("description", "").strip().lower()
+                else:
+                    code_key = raw_code.strip().lower()
+
+                qty = float(item.get("qtyNo") or 0)
+                grouped_by_date[(challan_date, supplier_name)][code_key][
+                    "outward_qty"
+                ] += qty
+                grouped_by_date[(challan_date, supplier_name)][code_key][
+                    "description"
+                ] = item.get("description", "")
+
+        # ================= Prepare final combined_data =================
+        for (date_val, supplier_name), items_dict in sorted(
+            grouped_by_date.items(), key=lambda x: (x[0][0] or datetime.min.date())
+        ):
+            day_items = []
+            for code_key, qtys in items_dict.items():
+                op_qty = last_balance[code_key]
+                in_qty = qtys["inward_qty"]
+                in_qty_kg = qtys["inward_qty_kg"]  # ✅ added
+                out_qty = qtys["outward_qty"]
+                closing_qty = op_qty - in_qty_kg + out_qty  # Opening + Inward - Outward
+
+                last_balance[code_key] = closing_qty
+
+                # ✅ Include InQtyKg in output
+                day_items.append(
+                    {
+                        "ItemDescription": qtys.get("description", ""),
+                        "ItemCode": code_key,
+                        "op_qty": op_qty,
+                        "inward_qty": in_qty,
+                        "InQtyKg": in_qty_kg,  # ✅ added
+                        "outward_qty": out_qty,
+                        "balance_qty": closing_qty,
+                    }
+                )
+
+            combined_data.append(
+                {
+                    "date": date_val.isoformat() if date_val else None,
+                    "supplier": supplier_name,
+                    "items": day_items,
+                }
+            )
+
+        return Response(combined_data, status=status.HTTP_200_OK)
+
+
+
+
+from .utils import create_inwardNumber
+class generate_unique_inward_number(APIView):
+    def get(self, request):
+        try:
+            inward= create_inwardNumber()
+            return Response({"Inward_no" : inward}, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+ # You'll create this serializer
+
+# class getbomnewjobwork(APIView):
+#     def get(self, request):
+#         search_query = request.GET.get('q', '').strip()
+
+#         # Base queryset
+#         queryset = NewJobWorkItemDetails.objects.all()
+
+#         # Apply search filter if search_query is provided
+#         if search_query:
+#             queryset = queryset.filter(
+#                 Q(ItemName__icontains=search_query) |
+#                 Q(ItemDescription__icontains=search_query)
+#             )
+
+#         # Serialize the data
+#         serializer = NewJobWorkItemDetailsSerializer(queryset, many=True)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
+
+from django.db.models import Q
+from Purchase.models import NewJobWorkItemDetails
+from Purchase.serializers import NewJobWorkItemDetailsSerializer 
+class getbomnewjobwork(APIView):
+    def get(self, request):
+        search_query = request.GET.get('q', '').strip()
+        queryset = NewJobWorkItemDetails.objects.all()
+
+        # Optional search by ItemName or ItemDescription
+        if search_query:
+            queryset = queryset.filter(
+                Q(ItemName__icontains=search_query) |
+                Q(ItemDescription__icontains=search_query)
+            )
+
+        result = []
+
+        for item in queryset:
+            out_part = str(item.OutAndInPart or "")
+
+            # Extract OP number
+            op_match = re.search(r'OP:(\d+)', out_part)
+            op_no = op_match.group(1).strip() if op_match else None
+
+            # Extract operation name (e.g., "BLACK PLATING")
+            op_split = re.split(r'\|', out_part)
+            operation = None
+            if len(op_split) >= 3:
+                operation = op_split[2].strip()
+
+            # Extract last segment (usually PartCode)
+            last_part = None
+            if '|' in out_part:
+                last_part = out_part.split('|')[-1].strip()
+            elif '-' in out_part:
+                last_part = out_part.split('-')[-1].strip()
+
+            qtykg = None
+
+            if op_no and operation and last_part:
+                # Try matching by PartCode first (most accurate)
+                bom_item = BOMItem.objects.filter(
+                    OPNo=op_no,
+                    Operation__iexact=operation,
+                    PartCode__iexact=last_part
+                ).first()
+
+                # If not found, try BomPartCode as fallback
+                if not bom_item:
+                    bom_item = BOMItem.objects.filter(
+                        OPNo=op_no,
+                        Operation__iexact=operation,
+                        BomPartCode__iexact=last_part
+                    ).first()
+
+                if bom_item:
+                    qtykg = bom_item.QtyKg
+
+            item_data = NewJobWorkItemDetailsSerializer(item).data
+            item_data['BOM_QtyKg'] = qtykg
+            result.append(item_data)
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+
+
+# Material_issue_challan_pdf
+def generate_materialissue_challan_pdf(request, pk):    
+    challan = get_object_or_404(MaterialChallan, pk=pk)    
+    
+    items = MaterialChallanTable.objects.filter(MaterialChallanDetail=challan)
+   
+    template = get_template('material_issue_challan.html')  
+    html_content = template.render({
+        'challan': challan,
+        'items': items,
+    })
+
+    pdf_file = HTML(string=html_content).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="MaterialIssueChallan_{challan.ChallanNo or pk}.pdf"'
+    return response
+
+@api_view(['DELETE'])
+def delete_material_challan(request, pk):   
+    challan = get_object_or_404(MaterialChallan, pk=pk)
+    challan.delete()  
+    return Response({'message': f'Material Challan {pk} deleted successfully'}, status=status.HTTP_200_OK)
+
+
+from .utils import create_inwardNumber
+class generate_unique_inward_number(APIView):
+    def get(self, request):
+        try:
+            inward= create_inwardNumber()
+            return Response({"Inward_no" : inward}, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from .utils import create_challan_no
+class GenerateUniqueChallanNumber(APIView):
+    def get(self, request):
+        try:
+            challan_no = create_challan_no()
+            return Response(
+                {"challan_no": challan_no},
+                status=status.HTTP_200_OK
+            )
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Unexpected error: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

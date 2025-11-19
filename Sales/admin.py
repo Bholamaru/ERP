@@ -6,6 +6,7 @@ from .models import onwardchallan, ChallanCounter
 from .models import transportdetails
 from .models import vehicaldetails
 from .models import outwardchallan
+from .models import *
 
 @admin.register(onwardchallan)
 class OnwardChallanAdmin(admin.ModelAdmin):
@@ -26,3 +27,5 @@ class ChallanCounterAdmin(admin.ModelAdmin):
 @admin.register(outwardchallan)
 class outwardchallanAdmin(admin.ModelAdmin):
     pass
+
+admin.site.register(OnwardChallanItem)

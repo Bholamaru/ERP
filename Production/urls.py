@@ -53,5 +53,7 @@ urlpatterns = [
 
     path("api/grn/heat-numbers/", HeatNoListAPIView.as_view(), name="RM-stock-grn-heat-numbers"),
     
-   
+    path('item-heatqty/', ItemHeatQtyView.as_view(), name='item-heatqty-by-materia_issue'),
+
+    path('item/op/heatqty/', ProductionGroupedByOperation.as_view(), name='op-wise-heatno-prodqty'),
 ]

@@ -531,6 +531,7 @@ class ItemTransaction2(models.Model):
 class NewJobWorkItemDetails(models.Model):
     purchase_order = models.ForeignKey(PurchasePO, related_name='items', on_delete=models.CASCADE, null=True)
     ItemName = models.CharField(max_length=100, blank=True, null=True)
+    item_type = models.CharField(max_length=100, blank=True, null=True)
     ItemDescription = models.CharField(max_length=100, blank=True, null=True)
     OutAndInPart = models.CharField(max_length=100, blank=True, null=True)
     Rate = models.CharField(max_length=100, blank=True, null=True)

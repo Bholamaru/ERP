@@ -2,6 +2,7 @@ from django.db import models
 from django.core.validators import RegexValidator
 from All_Masters.models import Item as Item2
 
+from decimal import Decimal
 
 class outwardchallan(models.Model):
     Plant = models.CharField(max_length=100, blank=True, null=True)
@@ -74,6 +75,7 @@ class OnwardChallanItem(models.Model):
     type        = models.CharField(max_length=200)
     description = models.CharField(max_length=200, blank=True)
     store       = models.CharField(max_length=100)
+    stock  = models.CharField(max_length=100,blank=True,null=True)
     suppRefNo   = models.CharField(max_length=50)
     qtyNo       = models.DecimalField(max_digits=12, decimal_places=2)
     qtyKg       = models.DecimalField(max_digits=12, decimal_places=2)
@@ -84,6 +86,17 @@ class OnwardChallanItem(models.Model):
 
     def __str__(self):
         return f"{self.challan} → {self.item_code}"
+    
+
+
+
+class Store(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    available_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    def __str__(self):
+        return f"{self.name} ({self.available_qty})"
+
 
 
 # class onwardchallan(models.Model):

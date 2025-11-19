@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,93 +14,116 @@
             font-size: 12px;
             line-height: 1.4;
         }
+
+
         .container {
             max-width: 800px;
             margin: 0 auto;
             border: 2px solid #000;
             padding: 15px;
         }
+
         .header {
             text-align: center;
             margin-bottom: 15px;
         }
+
         .header h1 {
             margin: 0;
             font-size: 16px;
         }
+
         .address-section {
             display: flex;
             border: 1px solid #000;
             justify-content: space-between;
             margin-bottom: 15px;
         }
+
         .address-box {
             width: 48%;
             padding: 10px;
             border-left: 1px solid #000;
 
         }
-        .address-double{
+
+        .address-double {
             border-bottom: 1px solid #000;
 
 
         }
+
         table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 15px;
         }
-        th, td {
+
+        th,
+        td {
             border: 1px solid #000;
             padding: 5px;
             text-align: left;
         }
+
         th {
             background-color: #f2f2f2;
         }
+
         .amount-section {
             display: flex;
             justify-content: space-between;
         }
+
         .amount-words {
             width: 60%;
         }
+
         .amount-table {
             width: 35%;
         }
+
         .terms {
             margin-top: 15px;
             font-size: 10px;
         }
+
         .signature-section {
             display: flex;
             justify-content: space-between;
             margin-top: 30px;
         }
+
         .signature-box {
             width: 48%;
             text-align: center;
         }
+
         .signature-line {
             border-top: 1px solid #000;
             margin-top: 40px;
             padding-top: 5px;
         }
+
         .small-text {
             font-size: 10px;
         }
+
         .bold {
             font-weight: bold;
         }
+
+        
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
-            <h1><b> PRUDULINK ERP </b></h1>
+            <h2><b> SHARP ENGINEERS </b></h2>
             <p> A-31 MIDC WALUJ 431136 </p>
-            <p>[ Issued Under Section 31 of GST Act, 2017 read with rule 48 of GST Rule, 2017 ]</p>
-            <h1>Purchase Order</h1>
+            
+            <h1>JOBWORK ORDER</h1>
         </div>
 
         <div class="address-section row mb-4">
@@ -109,7 +133,7 @@
                         <div class="address-double row">
                             <div class="col-6">
                                 <p><strong>P.O. NO.</strong> <span> : {{ po.PoNo }}</span></p>
-                                <p><strong>P.O. DATE</strong> <span> : {{ po.PoDate }} </span></p> 
+                                <p><strong>P.O. DATE</strong> <span> : {{ po.PoDate }} </span></p>
                                 <p><strong>Quotation No</strong> <span> : {{ po.QuotNo }}</span></p>
                                 <p><strong>Quot Date</strong> <span> : {{ po.QuotDate }}</span></p>
                             </div>
@@ -117,113 +141,78 @@
                                 <p> GSTIN No : <span> {{ item.GST_No2 }} </span> </p>
                                 <p>PAN No : <span> {{ item.PAN_NO }} </span></p>
                                 <p>CIN NO : <span> {{ item.CIN_No }}</span></p>
-                                <p>State Code : <span>  </span> </p>
+                                <p>State Code : <span> </span> </p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-12 mt-3">
                         <p><strong>To,</strong><br>
-                       <b> {{ item.Name }} </b> <br>
-                       {{ item.Address_Line_1 }}<br>
-                        {{ item.Region }}<br>
-                        {{ item.State_Code }}<br>
-                        {{ item.Pin_Code }}<br>
-                        {{ item.Contact_No }}<br>
-                        GSTIN No: {{ item.GST_No2 }}</p>
+                            <b> {{ po.Supplier }} </b> <br>
+                            {{ item.Address_Line_1 }}<br>
+                            {{ item.Region }}<br>
+                            {{ item.State_Code }}<br>
+                            {{ item.Pin_Code }}<br>
+                            {{ item.Contact_No }}<br>
+                            GSTIN No: {{ item.GST_No2 }}
+                        </p>
                     </div>
                 </div>
-                
+
             </div>
             <div class="address-box col-md-6">
-                <p>Our Contact Person  : </p>
+                <p>Our Contact Person : </p>
                 <p><strong>Bill To,</strong><br>
-                SHARP ENGINEERS<br>
-                A-31 MIDC WALUJ 431136</p>
-                
+                    SHARP ENGINEERS<br>
+                    A-31 MIDC WALUJ 431136</p>
+
                 <p><strong>Ship To (Goods Delivered At),</strong><br>
-                SHARP ENGINEERS<br>
+                    SHARP ENGINEERS<br>
                 </p>
             </div>
         </div>
 
         <div class="row">
             <div class="co;-12">
-                <p>Dear Sir,</p>
-                <p> We are pleased to place on you our purchase order for supply as per following.</p>
+               
+                <p>  Please arrange to supply the Materials as per the Terms & Conditions Given Below / Overleaf / Attached:</p>
             </div>
         </div>
 
-        <h2>Item</h2>
+        
+
+                  
 
         <table>
 
             <thead>
                 <tr>
-                    <th>Item No</th>
+                    <th>Sr</th>
                     <th>Item Description</th>
-                    <th>HSN</th>
                     <th>Qty</th>
-                    <th>Unit</th>
                     <th>Rate</th>
-                    <th>Disc</th>
+                    <th>Unit</th>
                     <th>Total</th>
                 </tr>
             </thead>
             <tbody>
-                {% for item, gst in combined_details %}
+                {% for item in item_details %}
                 <tr>
-                    <td>{{ gst.Rate }}</td>
-                    <td>{{ item.ItemDescription }}</td>
-                    <td>{{ gst.HSN }}</td>
-                    <td>{{ gst.Qty }}</td>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ item.ItemName}}-{{item.ItemDescription}}-{{item.OutAndInPart }}</td>
+
+                    <td>{{ item.Qty }}</td>
+                    <td>{{ item.Rate }}</td>
                     <td>{{ item.Unit }}</td>
-                    <td>{{ gst.Rate }}</td>
-                    <td>{{ item.Disc }}</td>
-                    <td>{{ gst.Total }}</td>
+
+                     <td>{{ item.total_amount|floatformat:2 }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
 
-            <tbody>
-                <tr>
-                    <td colspan="5"></td>
-                    <td colspan="2">Total (Rs)</td>
-                    <td>{{ po.GR_Total }}</td>
-                </tr>
-                <tr>
-                    <td colspan="5"></td>
-                    <td colspan="2">TOC Amt.(Rs.)</td>
-                    <td>0.00</td>
-                </tr>
-                <tr>
-                    <td colspan="5"></td>
-                    <td colspan="2">NTOC Amt.(Rs.)</td>
-                    <td>0.00</td>
-                </tr>
-                <tr>
-                    <td colspan="5"></td>
-                    <td colspan="2">CGST (Rs.)</td>
-                    <td>{{ po.CGST }}</td>
-                </tr>
-                <tr>
-                    <td colspan="5 "></td>
-                    <td colspan="2">SGST(Rs.)</td>
-                    <td>{{ po.SGST }}</td>
-                </tr>
-                <tr>
-                    <td colspan="5"></td>
-                    <td colspan="2">IGST(Rs.)</td>
-                    <td>{{ po.IGST }}</td>
-                </tr>
-                <tr>
-                    <td colspan="5">Rs. Two Lakh Eighty Seven Thousand Two Hundred and Thirty One Only</td>
-                    <td colspan="2"><strong>Gross Amount (Rs.)</strong></td>
-                    <td><strong>{{ po.GR_Total }}</strong></td>
-                </tr>
-            </tbody>
-
+         
         </table>
-        
+
+
 
         <div class="amount-section">
             <div class="amount-words">
@@ -231,7 +220,7 @@
             </div>
             <div class="amount-table">
                 <table>
-                   
+
                 </table>
             </div>
         </div>
@@ -284,24 +273,40 @@
         </div>
 
         <div class="terms small-text">
-            <p><strong>Instructions:</strong> Any Discrepancy in Order should be communicated within 24 hours, else it will be treated as "Accepted by Your"</p>
+            <p><strong>Instructions:</strong> Any Discrepancy in Order should be communicated within 24 hours, else it
+                will be treated as "Accepted by Your"</p>
             <p><strong>TERMS & CONDITIONS:</strong></p>
             <ol>
-                <li>SUPPLIER HAS TO FOLLOW ALL THE STATUTORY NECESSARY REQUIREMENTS SPECIFIED BY OUR HR AND ADMINISTRATION DEPARTMENT, RULES OF INDUSTRIAL LIKE PUC, DRIVING LICENCE, SAFETY SHOES, WORK PERMIT ETC</li>
+                <li>SUPPLIER HAS TO FOLLOW ALL THE STATUTORY NECESSARY REQUIREMENTS SPECIFIED BY OUR HR AND
+                    ADMINISTRATION DEPARTMENT, RULES OF INDUSTRIAL LIKE PUC, DRIVING LICENCE, SAFETY SHOES, WORK PERMIT
+                    ETC</li>
                 <li>SUPPLIER HAS TO FOLLOW THE RULES OF INDUSTRIAL, LABOUR LAWS AND CENTRAL MOTOR VEHICLE RULE.</li>
-                <li>SUPPLIER HAS TO TAKE CARE OF ALL THE SAFETY MEASURES OF MAN, MACHINE, BUILDING AND OTHER INFRASTRUCTURE WHILE WORKING IN OUR PREMISES</li>
-                <li>SUPPLIER MUST BE FOLLOW UP OUR ISO 9001:2015, IATF 16949:2016, '14001:2015 AND OHSAS 18001:2007, EOHS POLICY AND ITS OBJECTIVES</li>
-                <li>SUPPLIER SHALL COMPLY ALL APPLICABLE STATUTORY AND REGULATORY REQUIREMENTS APPLICABLE TO PRODUCTS AND PROCESS</li>
+                <li>SUPPLIER HAS TO TAKE CARE OF ALL THE SAFETY MEASURES OF MAN, MACHINE, BUILDING AND OTHER
+                    INFRASTRUCTURE WHILE WORKING IN OUR PREMISES</li>
+                <li>SUPPLIER MUST BE FOLLOW UP OUR ISO 9001:2015, IATF 16949:2016, '14001:2015 AND OHSAS 18001:2007,
+                    EOHS POLICY AND ITS OBJECTIVES</li>
+                <li>SUPPLIER SHALL COMPLY ALL APPLICABLE STATUTORY AND REGULATORY REQUIREMENTS APPLICABLE TO PRODUCTS
+                    AND PROCESS</li>
                 <li>Send PDI / material Test certificate along with each lot as applicable.</li>
-                <li>If material Rejected at inward stage need to collect within 8 days else scrapped at our end &cost will be debited to you.</li>
+                <li>If material Rejected at inward stage need to collect within 8 days else scrapped at our end &cost
+                    will be debited to you.</li>
                 <li>For surface coating supplier should submit SST Report once in quarter,or as per requirement.</li>
-                <li>As applicable Level-2 PPAP should be submitted by you after Sample submission & before production start.</li>
+                <li>As applicable Level-2 PPAP should be submitted by you after Sample submission & before production
+                    start.</li>
                 <li>As applicable MSDS of material need to be supplied. As and when received.</li>
-                <li>without our permission and approved you are not authorised to out sourced process directly .(as applicable)</li>
+                <li>without our permission and approved you are not authorised to out sourced process directly .(as
+                    applicable)</li>
                 <li>As and when our costumer demand with our presence can audit your process.( As applicable)</li>
-                <li>If customer complaints received due to your defect the cost will be debited to you & corrective action shall be required in specified format.If needed you have to visit our customer also on your cost.</li>
+                <li>If customer complaints received due to your defect the cost will be debited to you & corrective
+                    action shall be required in specified format.If needed you have to visit our customer also on your
+                    cost.</li>
             </ol>
         </div>
     </div>
 </body>
-</html>
+
+</html> 
+ 
+
+
+ 
