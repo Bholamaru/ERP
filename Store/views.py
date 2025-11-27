@@ -2408,6 +2408,312 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+
+import re
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+
+
+# class WIPStockreport(APIView):
+#     def get_inward_outward_balance(self, fg_part_code, bom_part_code, opno, extra_tokens=None):
+#         """
+#         Returns outward - inward quantity for the requested part/op pair.
+#         Matches either the FG part code or the BOM part code inside challan descriptions.
+#         """
+#         import re
+
+#         if not bom_part_code and not fg_part_code:
+#             return 0.0
+
+#         tokens = set()
+#         if fg_part_code:
+#             tokens.add(str(fg_part_code).strip().upper())
+#         if bom_part_code:
+#             tokens.add(str(bom_part_code).strip().upper())
+#         if extra_tokens:
+#             for token in extra_tokens:
+#                 if token:
+#                     tokens.add(str(token).strip().upper())
+
+#         tokens.discard("")
+
+#         if not tokens or not opno:
+#             return 0.0
+
+#         op_digits = re.search(r"(\d+)", str(opno))
+#         target_op = f"OP {op_digits.group(1)}" if op_digits else None
+
+#         def normalize_op(value):
+#             if not value:
+#                 return None
+#             m = re.search(r"(\d+)", str(value))
+#             return f"OP {m.group(1)}" if m else None
+
+#         def extract_op(desc):
+#             if not desc:
+#                 return None
+#             m = re.search(r"OP[\s:\-]*?(\d+)", str(desc), re.IGNORECASE)
+#             return f"OP {m.group(1)}" if m else None
+
+#         def contains_target(text):
+#             if not text:
+#                 return False
+#             upper_text = str(text).upper()
+#             return any(token and token in upper_text for token in tokens)
+
+#         inward_qty = 0.0
+#         outward_qty = 0.0
+
+#         inward_qs = InwardChallan2.objects.all()
+#         for inv in inward_qs:
+#             for row in inv.InwardChallanTable.all():
+#                 desc = row.ItemDescription
+#                 in_op = extract_op(desc)
+#                 if contains_target(desc) and in_op == target_op:
+#                     inward_qty += float(row.InQtyNOS or 0)
+
+#         outward_qs = onwardchallan.objects.all()
+#         for out in outward_qs:
+#             for item in out.items.all():
+#                 out_op = (
+#                     normalize_op(item.process)
+#                     or extract_op(item.description)
+#                     or extract_op(item.type)
+#                 )
+
+#                 text_matches = (
+#                     contains_target(item.item_code)
+#                     or contains_target(item.type)
+#                     or contains_target(item.description)
+#                 )
+
+#                 if not text_matches:
+#                     continue
+
+#                 if out_op == target_op or out_op is None:
+#                     outward_qty += float(item.qtyNo or 0)
+
+#         balance = outward_qty - inward_qty
+#         print("OUTWARD:", outward_qty)
+#         print("INWARD:", inward_qty)
+#         print("BALANCE:", balance)
+
+#         return balance
+
+
+    
+
+    
+#     def get(self, request):
+#         query = request.query_params.get('q', '').strip()
+#         if not query:
+#             return Response({'error': 'Search query "q" is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Filter ItemTable using part_code, part_no, or name_description
+#         items = ItemTable.objects.filter(
+#             Q(Part_Code__icontains=query) |
+#             Q(part_no__icontains=query) |
+#             Q(Name_Description__icontains=query)
+#         )
+#         if not items.exists():
+#             return Response({'error': 'No items found matching your query'}, status=status.HTTP_404_NOT_FOUND)
+
+#         response_data = []
+
+#         # Totals initialize (these will be recalculated after merge)
+#         total_rework_qty = total_reject_qty = total_prod_qty = 0
+#         total_pending_qc = total_subcon = total_total = 0
+
+#         for item in items:
+#             bom_items = BOMItem.objects.filter(item=item)
+
+#             for bom in bom_items:
+#                 if not bom.PartCode or not bom.OPNo:
+#                     continue
+
+#                 operation_number = bom.OPNo.strip()   # "20"
+
+#                 production_entries = ProductionEntry.objects.filter(
+#                     item__icontains=item.Part_Code,   
+#                     operation__startswith=operation_number,                
+                                 
+#                 )
+
+#                 # Get vendor balance using BOM PartCode (raw material)
+    
+    
+#                 subcon_balance = float(
+#                     self.get_inward_outward_balance(
+#                         item.Part_Code,
+#                         bom.PartCode,
+#                         bom.OPNo,
+#                         extra_tokens=[item.part_no, item.Name_Description],
+#                     ) or 0
+#                 )
+
+#                 if not production_entries.exists():
+#                     subcon_balance = float(subcon_balance or 0)
+#                     wip_wt = float(bom.WipWt or 0)
+#                     total = subcon_balance
+#                     totalwt = total * wip_wt
+
+#                     response_data.append({
+#                         "part_code": item.Part_Code,
+#                         "part_no": item.part_no,
+#                         "Name_Description": item.Name_Description,
+#                         "OPNo": bom.OPNo,
+#                         "Operation": bom.Operation,
+#                         "PartCode": bom.PartCode,
+#                         "rework_qty": 0,
+#                         "reject_qty": 0,
+#                         "prod_qty": 0,
+#                         "Total": total,
+#                         "WipWt": wip_wt,
+#                         "WipRate": float(bom.WipRate or 0),
+#                         "pending_qc": 0,
+#                         "subcon": subcon_balance,
+#                         "totalwt": totalwt
+#                     })
+#                 else:
+#                     subcon_added_to_total = False
+#                     for prod in production_entries:
+#                         pending_qc = 0 if getattr(bom, "QC", "").lower() in ["no", "n"] else float(prod.prod_qty or 0)
+#                         rework = float(prod.rework_qty or 0)
+#                         reject = float(prod.reject_qty or 0)
+#                         prod_qty = float(prod.prod_qty or 0)
+#                         subcon_balance = float(subcon_balance or 0)
+
+#                         total = rework + reject + prod_qty + pending_qc + subcon_balance
+#                         wip_wt = float(bom.WipWt or 0)
+#                         totalwt = total * wip_wt
+
+#                         response_data.append({
+#                             "part_code": item.Part_Code,
+#                             "part_no": item.part_no,
+#                             "Name_Description": item.Name_Description,
+#                             "OPNo": bom.OPNo,
+#                             "Operation": bom.Operation,
+#                             "PartCode": bom.PartCode,
+#                             "rework_qty": rework,
+#                             "reject_qty": reject,
+#                             "prod_qty": prod_qty,
+#                             "Total": total,
+#                             "WipWt": wip_wt,
+#                             "WipRate": float(bom.WipRate),
+#                             "pending_qc": pending_qc,
+#                             "subcon": subcon_balance,
+#                             "totalwt": totalwt
+#                         })
+
+#                         # (original incremental totals kept but we'll recalc below to ensure correctness)
+#                         total_rework_qty += rework
+#                         total_reject_qty += reject
+#                         total_prod_qty += prod_qty
+#                         total_pending_qc += pending_qc
+#                         total_total += total
+
+#                         if not subcon_added_to_total:
+#                             total_subcon += subcon_balance
+#                             subcon_added_to_total = True
+
+#         if not response_data:
+#             return Response({'message': 'No matching BOM or production entries found'}, status=status.HTTP_404_NOT_FOUND)
+
+#         # ==========================================
+#         # 🔥 MERGE DUPLICATE OPNo ROWS
+#         # ==========================================
+#         merged = {}
+
+       
+
+
+#         for row in response_data:
+            
+
+#             key = (
+#                 row["part_code"],
+#                 row["part_no"],
+#                 row["Name_Description"],
+#                 row["OPNo"],
+#                 row["PartCode"]
+#             )
+
+#             if key not in merged:
+#                 # ensure numeric fields are numbers (not None)
+#                 merged[key] = {
+#                     **row,
+#                     "rework_qty": float(row.get("rework_qty") or 0),
+#                     "reject_qty": float(row.get("reject_qty") or 0),
+#                     "prod_qty": float(row.get("prod_qty") or 0),
+#                     "pending_qc": float(row.get("pending_qc") or 0),
+#                     "subcon": float(row.get("subcon") or 0),
+#                     "Total": float(row.get("Total") or 0),
+#                     "WipWt": float(row.get("WipWt") or 0),
+#                     "totalwt": float(row.get("totalwt") or 0),
+#                 }
+#             else:
+#                 # Existing row → Add qty fields
+#                 merged[key]["rework_qty"] = (merged[key]["rework_qty"] or 0) + (row.get("rework_qty") or 0)
+#                 merged[key]["reject_qty"] = (merged[key]["reject_qty"] or 0) + (row.get("reject_qty") or 0)
+#                 merged[key]["prod_qty"] = (merged[key]["prod_qty"] or 0) + (row.get("prod_qty") or 0)
+#                 merged[key]["pending_qc"] = (merged[key]["pending_qc"] or 0) + (row.get("pending_qc") or 0)
+
+#                 # subcon should remain the same (do not add again)
+#                 # Recalculate Total
+#                 merged[key]["Total"] = (
+#                     (merged[key]["rework_qty"] or 0)
+#                     + (merged[key]["reject_qty"] or 0)
+#                     + (merged[key]["prod_qty"] or 0)
+#                     + (merged[key]["pending_qc"] or 0)
+#                     + (merged[key]["subcon"] or 0)
+#                 )
+
+#                 # Recalculate totalwt
+#                 merged[key]["totalwt"] = merged[key]["Total"] * float(merged[key].get("WipWt") or 0)
+
+#         # Replace response data with merged rows
+#         response_data = list(merged.values())
+
+                
+
+#         # ================================================
+#         # 🔥 RECALCULATE TOTAL SUMMARY AFTER MERGE
+#         # ================================================
+#         # reset totals and recompute from merged data to ensure correctness
+#         total_rework_qty = total_reject_qty = total_prod_qty = 0
+#         total_pending_qc = total_subcon = total_total = 0
+
+#         for row in response_data:
+#             total_rework_qty += row.get("rework_qty") or 0
+#             total_reject_qty += row.get("reject_qty") or 0
+#             total_prod_qty += row.get("prod_qty") or 0
+#             total_pending_qc += row.get("pending_qc") or 0
+#             total_total += row.get("Total") or 0
+
+#             # subcon add once per merged OP row
+#             total_subcon += row.get("subcon") or 0
+
+#         # =====================================================
+#         # 🔥 FINAL RESPONSE
+#         # =====================================================
+#         return Response({
+#             "totals": {
+#                 "total_rework": total_rework_qty,
+#                 "total_reject": total_reject_qty,
+#                 "total_prod": total_prod_qty,
+#                 "total_pending_qc": total_pending_qc,
+#                 "total_subcon": total_subcon,
+#                 "total_total": total_total
+#             },
+#             "data": response_data
+#         }, status=status.HTTP_200_OK)
+
+
+
+
+
 class WIPStockreport(APIView):
 
     def get_vendor_balance_from_stock(self, part_code):
@@ -2432,7 +2738,7 @@ class WIPStockreport(APIView):
                         "InQtyKg": float(extract_number(getattr(inv_item, "InQtyKg", 0))),
                         "ItemCode": None
                     }
-
+                   
                     # pull item code from related GST details
                     gst_detail = getattr(inv_item, "InwardChallanGSTDetails", None)
                     if gst_detail and getattr(gst_detail, "ItemCode", None):
@@ -2503,6 +2809,7 @@ class WIPStockreport(APIView):
                     if not qty_value:
                         qty_value = item.get("qtyNo", 0)
                     qty = extract_number(qty_value)
+                    print("outwardqty==", qty)
                     grouped_by_date[(challan_date, supplier_name)][code_key]["outward_qty"] += qty
                     grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["description"]
 
@@ -2523,12 +2830,13 @@ class WIPStockreport(APIView):
                         op_qty = last_balance[code_key]
                         in_qty_kg = qtys["inward_qty_kg"]
                         out_qty = qtys["outward_qty"]
+                       
                         # closing = opening + inward - outward
                         closing_qty = op_qty + in_qty_kg - out_qty
 
                         last_balance[code_key] = closing_qty
                         part_balance = closing_qty  # latest balance
-
+                        
             return round(part_balance, 2)
 
         except Exception as e:
@@ -2562,11 +2870,12 @@ class WIPStockreport(APIView):
                 if not bom.PartCode or not bom.OPNo:
                     continue
 
-                production_entries = ProductionEntry.objects.filter(
-                    item__icontains=item.Part_Code,
-                    # operation=bom.OPNo
-                    operation__icontains=bom.OPNo,
+                operation_number = bom.OPNo.strip()   # "20"
 
+                production_entries = ProductionEntry.objects.filter(
+                    item__icontains=item.Part_Code,   
+                    operation__startswith=operation_number,                
+                #    operation__icontains=bom.OPNo,                    
                 )
 
                 # Get vendor balance using BOM PartCode (raw material)
@@ -2622,7 +2931,7 @@ class WIPStockreport(APIView):
                             "WipWt": wip_wt,
                             "WipRate": float(bom.WipRate),
                             "pending_qc": pending_qc,
-                            "subcon": subcon_balance,
+                            "subcon": abs(subcon_balance),
                             "totalwt": totalwt
                         })
 
@@ -2643,17 +2952,11 @@ class WIPStockreport(APIView):
         # ==========================================
         # 🔥 MERGE DUPLICATE OPNo ROWS
         # ==========================================
-        merged = {}
-
-        def extract_op_no(operation):
-            if not operation:
-                return None
-            return operation.split("|")[0]   #"10|PFFGFG1001" → "10"
-        
+        merged = {}      
 
 
         for row in response_data:
-            row["OPNo"] = extract_op_no(row.get("operation"))
+            
 
             key = (
                 row["part_code"],
@@ -2731,8 +3034,6 @@ class WIPStockreport(APIView):
             },
             "data": response_data
         }, status=status.HTTP_200_OK)
-
-
 
 
 """
@@ -2982,266 +3283,6 @@ class WIPStockreport(APIView):
         }, status=status.HTTP_200_OK)
 
 """
-
-# class WIPStockreport(APIView):    
-#     def get_vendor_balance_from_stock(self, part_code):
-        
-#         try:
-#             combined_data = []
-#             inward_data = []
-
-#             # ================= Inward Challans =================
-#             inward_queryset = InwardChallan2.objects.all()
-
-#             for inward in inward_queryset:
-#                 inward_items = []
-#                 for inv_item in inward.InwardChallanTable.all():
-
-#                     def extract_number(value):
-#                         match = re.search(r"[\d.]+", str(value))
-#                         return float(match.group()) if match else 0
-
-#                     item_dict = {
-#                         "ItemDescription": inv_item.ItemDescription,  
-#                         "ChallanQty": float(extract_number(inv_item.ChallanQty)),
-#                         "InQtyKg": float(extract_number(getattr(inv_item, "InQtyKg", 0))), 
-#                         "ItemCode": None
-#                     }
-#                     # pull item code from related GST details
-#                     gst_detail = getattr(inv_item, "InwardChallanGSTDetails", None)
-#                     if gst_detail and getattr(gst_detail, "ItemCode", None):
-#                         item_dict["ItemCode"] = gst_detail.ItemCode
-#                     inward_items.append(item_dict)
-
-#                 inward_record = {
-#                     "id": inward.id,
-#                     "SupplierName": inward.SupplierName,
-#                     "ChallanNo": inward.ChallanNo,
-#                     "ChallanDate": getattr(inward, "InwardDate", None),
-#                     "items": inward_items
-#                 }
-#                 inward_data.append(inward_record)
-
-#             # ================= Outward Challans =================
-#             outward_queryset = onwardchallan.objects.all().order_by("challan_date")
-
-#             # ================= Stock Calculation =================
-#             last_balance = defaultdict(int)
-#             grouped_by_date = defaultdict(lambda: defaultdict(lambda: {
-#                 "opening_qty": 0,
-#                 "inward_qty": 0,
-#                 "inward_qty_kg": 0,
-#                 "outward_qty": 0,
-#                 "closing_qty": 0,
-#                 "description": ""
-#             }))
-
-#             # ---- Process inward challans ----
-#             for inward in inward_data:
-#                 challan_date = inward["ChallanDate"]
-
-#                 if isinstance(challan_date, str):
-#                     try:
-#                         challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
-#                     except Exception:
-#                         challan_date = None
-
-#                 supplier_name = inward["SupplierName"]
-#                 for item in inward["items"]:
-#                     code_key = item["ItemCode"] or item["ItemDescription"].strip().lower()
-#                     qty = item["ChallanQty"]
-#                     inqty_kg = item.get("InQtyKg", 0)  # ✅ Get InQtyKg
-
-#                     grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty"] += qty
-#                     grouped_by_date[(challan_date, supplier_name)][code_key]["inward_qty_kg"] += inqty_kg  # ✅ Add InQtyKg
-
-#                     grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["ItemDescription"]
-
-#             # ---- Process outward challans ----
-#             for outward in outward_queryset:
-#                 challan_date = outward.challan_date
-
-#                 if isinstance(challan_date, str):
-#                     try:
-#                         challan_date = datetime.strptime(challan_date, "%Y-%m-%d").date()
-#                     except Exception:
-#                         challan_date = None
-
-#                 supplier_name = outward.vender
-#                 outward_items = list(
-#                     outward.items.all().values("description", "qtyNo", "type", "item_code")
-#                 )
-#                 for item in outward_items:
-#                     code_key = item["item_code"] or item["description"].strip().lower()
-#                     qty = float(item["qtyNo"] or 0)
-#                     grouped_by_date[(challan_date, supplier_name)][code_key]["outward_qty"] += qty
-#                     grouped_by_date[(challan_date, supplier_name)][code_key]["description"] = item["description"]
-
-#             # ================= Find balance for specific part_code =================
-#             part_balance = 0
-            
-#             for (date_val, supplier_name), items_dict in sorted(
-#                 grouped_by_date.items(),
-#                 key=lambda x: (x[0][0] or datetime.min.date())
-#             ):
-#                 for code_key, qtys in items_dict.items():
-#                     # Check if this item matches our part_code
-#                     item_code = code_key if isinstance(code_key, str) and code_key != code_key.lower() else None
-#                     description = qtys.get("description", "")
-                    
-#                     # Match by ItemCode or Description containing part_code
-#                     if (item_code and part_code in str(item_code)) or (part_code in str(description)):
-#                         op_qty = last_balance[code_key]
-#                         in_qty = qtys["inward_qty"]
-#                         in_qty_kg = qtys["inward_qty_kg"]  # ✅ Use InQtyKg instead of inward_qty
- 
-#                         out_qty = qtys["outward_qty"]
-#                         print(out_qty)
-#                         print(in_qty_kg)
-#                         closing_qty = op_qty - in_qty_kg + out_qty  # Fixed calculation
-                        
-#                         last_balance[code_key] = closing_qty
-#                         part_balance = closing_qty  # Keep updating to get latest balance
-
-#             return part_balance
-
-#         except Exception as e:
-#             print(f"Error getting vendor balance: {e}")
-#             return 0
-
-#     def get(self, request):
-#         query = request.query_params.get('q', '').strip()
-#         if not query:
-#             return Response({'error': 'Search query "q" is required'}, status=status.HTTP_400_BAD_REQUEST)
-
-#         # Filter ItemTable using part_code, part_no, or name_description
-#         items = ItemTable.objects.filter(
-#             Q(Part_Code__icontains=query) |
-#             Q(part_no__icontains=query) |
-#             Q(Name_Description__icontains=query)
-#         )
-#         if not items.exists():
-#             return Response({'error': 'No items found matching your query'}, status=status.HTTP_404_NOT_FOUND)
-
-#         response_data = []
-
-#         # Totals initialize
-#         total_rework_qty = 0
-#         total_reject_qty = 0
-#         total_prod_qty = 0
-#         total_pending_qc = 0
-#         total_subcon = 0
-#         total_total =0
-
-#         for item in items:
-#             bom_items = BOMItem.objects.filter(item=item)
-
-#             for bom in bom_items:
-#                 if not bom.PartCode or not bom.OPNo:
-#                     continue
-
-#                 production_entries = ProductionEntry.objects.filter(
-#                     item__icontains=item.Part_Code,
-#                     operation__icontains=bom.OPNo
-#                 )
-
-#                 # Get vendor balance for this part using part_no (matching with VenderStock ItemCode)
-#                 subcon_balance = self.get_vendor_balance_from_stock(item.part_no)
-
-#                 if not production_entries.exists():
-#                     subcon_balance = int(subcon_balance or 0)
-#                     wip_wt = float(bom.WipWt or 0)
-#                     total = subcon_balance
-#                     totalwt = total * wip_wt
-
-#                     response_data.append({
-#                         "part_code": item.Part_Code,
-#                         "part_no": item.part_no,
-#                         "Name_Description": item.Name_Description,
-#                         "OPNo": bom.OPNo,
-#                         "Operation": bom.Operation,
-#                         "PartCode": bom.PartCode,
-#                         "rework_qty": None,
-#                         "reject_qty": None,
-#                         "prod_qty": None,
-#                         "Total": subcon_balance,  
-#                         "WipWt": bom.WipWt,
-#                         "WipRate": bom.WipRate,
-#                         "pending_qc": 0,
-#                         "subcon": subcon_balance,
-#                         "totalwt": totalwt
-#                     })
-#                 else:
-#                     # Add subcon_balance to total only once per BOM item, not per production entry
-#                     subcon_added_to_total = False
-                    
-#                     for prod in production_entries:
-#                         # pending QC logic
-#                         if getattr(bom, "QC", "").lower() in ["no", "n"]:
-#                             pending_qc = 0
-#                         else:
-#                             pending_qc = float(prod.prod_qty or 0)
-
-#                         rework = float(prod.rework_qty or 0)
-#                         reject = float(prod.reject_qty or 0)
-#                         prod_qty = float(prod.prod_qty or 0)
-#                         subcon_balance = float(subcon_balance or 0)
-                                                
-#                         total = rework + reject + prod_qty + pending_qc + subcon_balance
-#                         wip_wt = float(bom.WipWt or 0)  
-
-#                         totalwt = total * wip_wt
-
-                        
-#                         # Add row
-#                         response_data.append({
-#                             "part_code": item.Part_Code,
-#                             "part_no": item.part_no,
-#                             "Name_Description": item.Name_Description,
-#                             "OPNo": bom.OPNo,
-#                             "Operation": bom.Operation,
-#                             "PartCode": bom.PartCode,
-#                             "rework_qty": rework,
-#                             "reject_qty": reject,
-#                             "prod_qty": prod_qty,
-#                             "Total": float(total),
-#                             "WipWt": float(wip_wt),
-#                             "WipRate": float(bom.WipRate),
-#                             "pending_qc": float(pending_qc),
-#                             "subcon": float(subcon_balance),
-#                             "totalwt": totalwt
-#                         })
-
-#                         # Update totals
-#                         total_rework_qty += rework
-#                         total_reject_qty += reject
-#                         total_prod_qty += prod_qty
-#                         total_pending_qc += pending_qc
-#                         total_total += total
-                        
-#                         # Add subcon_balance to grand total only once per BOM item
-#                         if not subcon_added_to_total:
-#                             total_subcon += subcon_balance
-#                             subcon_added_to_total = True
-
-#         if not response_data:
-#             return Response({'message': 'No matching BOM or production entries found'}, status=status.HTTP_404_NOT_FOUND)
-
-#         return Response({
-#             "totals": {
-#                 "total_rework": total_rework_qty,
-#                 "total_reject": total_reject_qty,
-#                 "total_prod": total_prod_qty,
-#                 "total_pending_qc": total_pending_qc,
-#                 "total_subcon": total_subcon,
-#                 "total_total": total_total
-#             },
-#             "data": response_data
-#         }, status=status.HTTP_200_OK)
-
-
-
-
 
 
 

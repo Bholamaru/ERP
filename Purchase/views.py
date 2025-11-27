@@ -2298,3 +2298,37 @@ class GetPOBySupplierAPIView(APIView):
 
         serializer = PoSupplierFilterSerializer(result, many=True)
         return Response(serializer.data)
+
+
+class PurchasePODeleteAPI(APIView):
+    def delete(self, request, po_id):
+        try:
+            po = PurchasePO.objects.get(id=po_id)
+        except PurchasePO.DoesNotExist:
+            return Response(
+                {"error": "Purchase PO not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        po.delete()
+        return Response(
+            {"message": "Purchase PO deleted successfully"},
+            status=status.HTTP_200_OK
+        )
+
+class NewjobworkDeleteAPI(APIView):
+    def delete(self,request,po_id):
+        try:
+            po=NewJobWorkPoInfo.objects.get(id=po_id)
+        except NewJobWorkPoInfo.DoesNotExist:
+            return Response(
+                {"error":"jobwork po not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        po.delete()
+        return Response(
+            {
+                "message":"Jobwork po deleted successfuly"
+            },
+            status=status.HTTP_200_OK
+        )

@@ -73,4 +73,7 @@ urlpatterns = router.urls + [
     path('new-jobwork-item/', newjobworkitemdata.as_view(), name='new-jobwork-item'),
     path('jobwork/RM/items/', newjobworkitemRMdata.as_view(), name='newjobworkitemdata'),
     path("jobworkpo/FG/items/", GetPOBySupplierAPIView.as_view(), name='newjobwork-fg-data-for-outwardchallan'),
+
+    path('purchase-po/delete/<int:po_id>/', PurchasePODeleteAPI.as_view(), name='purchasepo-delete'),
+    path("jobwork/delete/<int:po_id>/", NewjobworkDeleteAPI.as_view() , name="jobwork-purchase-delete"),
 ]

@@ -178,4 +178,8 @@ urlpatterns = [
     path("api/bom_pdf/<int:item_id>/",views.generate_bom_pdf,name='generate_bom_pdf'),
     path('api/bom-items/', BOMItemByPartCodeView.as_view(), name='bom-items-by-part-code'),
 
+    path('supplier/delete/<int:item_id>', ItemDeleteAPI.as_view() , name='supplier-item-delete' ),
+    path('item/delete/<int:item_id>' , ItemtableDeleteAPI.as_view() , name='Item-table-delete'),
+    path('bom/delete/<int:bom_id>', BOMItemDeleteAPI.as_view(), name='bomitem-delete'),
+
 ]

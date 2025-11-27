@@ -90,4 +90,7 @@ urlpatterns = [
     path('material-challan/delete/<int:pk>/', views.delete_material_challan, name='delete_material_challan'),
     path('generate-challan/', GenerateUniqueChallanNumber.as_view(), name='generate-challan-materiall_issue'),
 
+
+    
+
 ]

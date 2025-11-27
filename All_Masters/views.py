@@ -2208,14 +2208,7 @@ class BOMItemByPartCodeView(APIView):
                 continue
 
             serializer = BOMItemSerializer(bom_items, many=True)
-            # instead of mapping to just the list of BOMItems,
-            # map to a dict with both the item.id and the serialized data
-
-
-            # grouped_data[item.Part_Code] = {
-            #     "item_id": item.id,
-            #     "bom_items": serializer.data
-            # }
+           
 
             grouped_data[f"{item.Part_Code} - {item.Name_Description} - {item.part_no}"] = {
                 "item_id": item.id,
@@ -2230,3 +2223,52 @@ class BOMItemByPartCodeView(APIView):
 
         return Response(grouped_data, status=status.HTTP_200_OK)
 
+
+
+
+class ItemDeleteAPI(APIView):
+    def delete(self, request, item_id):
+        try:
+            item = Item.objects.get(id=item_id)
+        except Item.DoesNotExist:
+            return Response(
+                {"error": "Item not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        item.delete()
+        return Response(
+            {"message": "Item deleted successfully"},
+            status=status.HTTP_200_OK
+        )
+
+
+class ItemtableDeleteAPI(APIView):
+    def delete(self,request,item_id):
+        try:
+            item=ItemTable.objects.get(id=item_id)
+        except ItemTable.DoesNotExist:
+            return Response(
+                {"error":"Item not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        item.delete()
+        return Response({
+            "message":"Item deleted successfully"
+        },status=status.HTTP_200_OK)
+
+class BOMItemDeleteAPI(APIView):
+    def delete(self, request, bom_id):
+        try:
+            bom_item = BOMItem.objects.get(id=bom_id)
+        except BOMItem.DoesNotExist:
+            return Response(
+                {"error": "BOM item not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        bom_item.delete()
+        return Response(
+            {"message": "BOM item deleted successfully"},
+            status=status.HTTP_200_OK
+        )
